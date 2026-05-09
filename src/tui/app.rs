@@ -839,6 +839,11 @@ pub struct App {
     model_picker_load_request_id: u64,
     // Pending model switch from picker (for remote mode async processing)
     pending_model_switch: Option<String>,
+    // Per-task slash command (e.g. /plan, /code) snapshots the active model
+    // here so it can be restored at turn completion. Carries
+    // (previous_model, previous_effort, slot_label) for status messages.
+    pub(super) pending_task_model_restore:
+        Option<(String, Option<String>, String)>,
     // Pending account switch from inline picker (for remote mode async processing)
     pending_account_picker_action: Option<crate::tui::AccountPickerAction>,
     // Keybindings for model switching

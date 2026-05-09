@@ -9,7 +9,7 @@ pub use jcode_config_types::{
     DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig, KeybindingsConfig,
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NativeScrollbarConfig, ProviderConfig, SafetyConfig,
-    SessionPickerResumeAction, UpdateChannel,
+    SessionPickerResumeAction, TaskModelsConfig, UpdateChannel,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -81,6 +81,10 @@ pub struct Config {
     /// Mirrors the `statusLine` feature in Claude Code so existing
     /// scripts (e.g. `~/.claude/statusline-command.sh`) work verbatim.
     pub status_line: StatusLineConfig,
+
+    /// Per-task-type model assignment. Slash commands like `/plan` and
+    /// `/code` swap the active model for one turn based on entries here.
+    pub task_models: TaskModelsConfig,
 }
 
 /// External dictation / speech-to-text integration.

@@ -319,10 +319,39 @@ impl App {
         if !crate::config::config().status_line.is_active() {
             return;
         }
-        let model_id = self.provider_model();
+        // Use kv_cache_provider_model so the model name resolves correctly
+        // in REMOTE mode too — `self.provider_model()` would return
+        // "unknown" because `self.provider` is `InertRuntimeProvider` for
+        // remote clients (see app.rs:982-1003). Local mode unchanged.
+        let model_id = self.kv_cache_provider_model();
         let model_display = model_id.clone();
         let cwd = std::env::current_dir().unwrap_or_default();
         let branch = super::helpers::gather_git_info().map(|info| info.branch);
+
+        // Both rate-limit windows come from the synchronous usage cache —
+        // populated at startup + on every TUI usage refresh. Convert ISO
+        // timestamps to "seconds until reset" so bash scripts can render
+        // remaining time without parsing dates themselves.
+        let usage_now = crate::usage::get_sync();
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let parse_secs = |iso: &str| -> Option<i64> {
+            chrono::DateTime::parse_from_rfc3339(iso)
+                .ok()
+                .map(|dt| dt.timestamp() - now_secs)
+                .map(|d| d.max(0))
+        };
+        let five_hour_resets_in_secs = usage_now
+            .five_hour_resets_at
+            .as_deref()
+            .and_then(parse_secs);
+        let seven_day_resets_in_secs = usage_now
+            .seven_day_resets_at
+            .as_deref()
+            .and_then(parse_secs);
+
         let snapshot = crate::tui::status_line_runner::StatusLineSnapshot {
             model_id,
             model_display,
@@ -334,8 +363,8 @@ impl App {
             current_usage_tokens: self.session_current_usage_tokens(),
             total_input_tokens: self.session_total_input_tokens(),
             total_output_tokens: self.session_total_output_tokens(),
-            five_hour_resets_in_secs: self.rate_limit_resets_in_secs(),
-            seven_day_resets_in_secs: None,
+            five_hour_resets_in_secs,
+            seven_day_resets_in_secs,
         };
         crate::tui::status_line_runner::set_snapshot(snapshot);
     }

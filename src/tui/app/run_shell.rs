@@ -159,6 +159,16 @@ impl App {
 
             let mut bus_receiver_remote = Bus::global().subscribe();
 
+            // Idle-timeout watchdog: if we don't receive ANY server event for
+            // this long while connected, assume the TCP connection has gone
+            // half-open (proxy timeout, network change, sleep/wake, etc.) and
+            // force a reconnect. The OS would otherwise keep the dead socket
+            // alive for several minutes before declaring it broken — meanwhile
+            // the user sees nothing happening.
+            const SERVER_IDLE_TIMEOUT: std::time::Duration =
+                std::time::Duration::from_secs(60);
+            let mut last_server_event_at = std::time::Instant::now();
+
             // Main event loop
             loop {
                 let desired_redraw = crate::tui::redraw_interval(&self);
@@ -190,11 +200,25 @@ impl App {
                     continue;
                 }
 
+                let idle_remaining = SERVER_IDLE_TIMEOUT
+                    .saturating_sub(last_server_event_at.elapsed());
                 tokio::select! {
                     _ = redraw_interval.tick() => {
                         needs_redraw |= remote::handle_tick(&mut self, &mut remote_conn).await;
                     }
+                    _ = tokio::time::sleep(idle_remaining), if !idle_remaining.is_zero() => {
+                        // Idle threshold tripped — force reconnect. We log so
+                        // it shows up in the daily log alongside ordinary
+                        // reconnect attempts. The reconnect chain handles
+                        // backoff and resume from there.
+                        crate::logging::warn(&format!(
+                            "Remote idle for {}s with no server events; forcing reconnect",
+                            SERVER_IDLE_TIMEOUT.as_secs(),
+                        ));
+                        continue 'outer;
+                    }
                     event = remote_conn.next_event() => {
+                        last_server_event_at = std::time::Instant::now();
                         let (outcome, event_redraw) = remote::handle_remote_event(
                             &mut self,
                             &mut terminal,

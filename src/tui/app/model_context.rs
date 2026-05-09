@@ -1106,6 +1106,45 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
+    // Per-task model assignment: /<slot> <prompt>
+    //
+    // Slot ids come from `[task_models.assignments]` in the user's config
+    // (see crates/jcode-config-types `TaskModelsConfig`). The slot's value
+    // is a model spec like "claude-opus-4-7" or
+    // "claude-sonnet-4-6+effort=high". We snapshot the current
+    // (model, effort) on App, swap to the slot's spec, and dispatch the
+    // free-text body as the user prompt for THIS turn. `local::finish_turn`
+    // restores the previous (model, effort) when the turn completes.
+    if let Some((slot, body)) = parse_task_slot_command(trimmed) {
+        let cfg = crate::config::config();
+        if let Some(spec) = cfg.task_models.assignments.get(&slot).cloned() {
+            apply_task_slot(app, &slot, &spec, body);
+            return true;
+        }
+    }
+
+    // /task-models — show current per-task assignments. No-args text view.
+    if trimmed == "/task-models" {
+        let assignments = &crate::config::config().task_models.assignments;
+        if assignments.is_empty() {
+            app.push_display_message(DisplayMessage::system(
+                "No [task_models] configured. Edit ~/.jcode/config.toml to add slots like:\n  [task_models.assignments]\n  plan = \"claude-opus-4-7\"\n  code = \"claude-sonnet-4-6\"\n  read = \"claude-haiku-4-5-20251001\"\nThen restart jcode.".to_string(),
+            ));
+        } else {
+            let mut lines = vec!["**Task model assignments**".to_string(), String::new()];
+            for (slot, spec) in assignments {
+                lines.push(format!("  /{slot} → {spec}"));
+            }
+            lines.push(String::new());
+            lines.push(
+                "Use `/<slot> <prompt>` to swap the model for one turn (then restore)."
+                    .to_string(),
+            );
+            app.push_display_message(DisplayMessage::system(lines.join("\n")));
+        }
+        return true;
+    }
+
     if matches!(trimmed, "/fast default" | "/fast default status") {
         let default_tier = crate::config::Config::load().provider.openai_service_tier;
         let default_enabled = default_tier.as_deref() == Some("priority");
@@ -1406,4 +1445,67 @@ pub(super) fn unavailable_model_route_message(
     }
 
     lines.join("\n")
+}
+
+/// Parse a `/<slot> <prompt>` line for the per-task model assignment
+/// feature. Returns `Some((slot, body))` if the input starts with
+/// `/<lowercase_alphanum>` followed by whitespace and free-text body.
+/// Returns `None` for empty body, missing space, or non-slash inputs.
+///
+/// Hard-coded slash commands (`/help`, `/effort`, `/model`, etc.) match
+/// earlier in the dispatch chain so this only sees genuinely-custom slot
+/// names from `[task_models.assignments]`.
+pub(super) fn parse_task_slot_command(trimmed: &str) -> Option<(String, &str)> {
+    let rest = trimmed.strip_prefix('/')?;
+    let (slot, body) = rest.split_once(char::is_whitespace)?;
+    if slot.is_empty() || body.trim().is_empty() {
+        return None;
+    }
+    if !slot
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return None;
+    }
+    Some((slot.to_string(), body.trim_start()))
+}
+
+/// Snapshot the active model+effort, swap to the slot's spec, and
+/// re-submit the body as a regular user prompt. `local::finish_turn`
+/// restores the prior model+effort when the turn completes.
+///
+/// `spec` format: `model-id` or `model-id+effort=high`.
+pub(super) fn apply_task_slot(app: &mut App, slot: &str, spec: &str, body: &str) {
+    let (model_part, effort_override) = match spec.split_once("+effort=") {
+        Some((m, e)) => (m.trim().to_string(), Some(e.trim().to_string())),
+        None => (spec.trim().to_string(), None),
+    };
+    if model_part.is_empty() {
+        app.push_display_message(DisplayMessage::error(format!(
+            "/{slot}: empty model in [task_models.assignments]"
+        )));
+        return;
+    }
+
+    let prev_model = app.provider.model();
+    let prev_effort = app.provider.reasoning_effort();
+
+    if let Err(err) = app.provider.set_model(&model_part) {
+        app.push_display_message(DisplayMessage::error(format!(
+            "/{slot}: failed to switch model to {model_part}: {err}"
+        )));
+        return;
+    }
+    if let Some(eff) = effort_override.as_deref() {
+        let _ = app.provider.set_reasoning_effort(eff);
+    }
+    app.pending_task_model_restore =
+        Some((prev_model, prev_effort, slot.to_string()));
+    app.set_status_notice(format!("/{slot} → {model_part}"));
+
+    // Inject the body as a fresh user prompt and re-run submit_input.
+    // No leading slash on the body so no slash-handler reclaims it — it
+    // flows through to the normal user-message dispatch path.
+    app.input = body.to_string();
+    app.submit_input();
 }

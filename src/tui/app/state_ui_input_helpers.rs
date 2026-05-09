@@ -63,6 +63,16 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/review", "Launch a one-shot headed review session"),
     RegisteredCommand::public("/judge", "Launch a one-shot headed judge session"),
     RegisteredCommand::public("/effort", "Show/change reasoning effort (Alt+left/right)"),
+    // Per-task model slots — see [task_models.assignments] in config.toml.
+    // Each `/<slot> <prompt>` swaps to that slot's model for one turn then
+    // restores. Custom slots (e.g. /architect) work too without showing here.
+    RegisteredCommand::public("/plan", "Run a planning prompt with the [task_models] plan model"),
+    RegisteredCommand::public("/code", "Run a coding prompt with the [task_models] code model"),
+    RegisteredCommand::public("/read", "Read/summarize files with the [task_models] read model"),
+    RegisteredCommand::public("/debug", "Debug a problem with the [task_models] debug model"),
+    RegisteredCommand::public("/explain", "Explain code with the [task_models] explain model"),
+    RegisteredCommand::public("/test", "Write tests with the [task_models] test model"),
+    RegisteredCommand::public("/task-models", "Show current per-task model assignments"),
     RegisteredCommand::public("/fast", "Toggle OpenAI/Codex fast mode"),
     RegisteredCommand::public("/transport", "Show/change connection transport"),
     RegisteredCommand::public("/alignment", "Show/change default text alignment"),

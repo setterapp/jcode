@@ -427,6 +427,20 @@ pub(super) fn finish_turn(app: &mut App) {
     app.thinking_prefix_emitted = false;
     app.thinking_buffer.clear();
     app.note_runtime_memory_event_force("turn_completed", "local_turn_finished");
+
+    // Restore the model the user had before a `/plan|/code|/read|...`
+    // task slash command swapped it for this turn. Failures are logged but
+    // not surfaced — the user can always switch back with `/model`.
+    if let Some((prev_model, prev_effort, slot)) = app.pending_task_model_restore.take() {
+        if let Err(err) = app.provider.set_model(&prev_model) {
+            crate::logging::warn(&format!(
+                "task slot /{slot}: failed to restore model {prev_model}: {err}"
+            ));
+        }
+        if let Some(eff) = prev_effort.as_deref() {
+            let _ = app.provider.set_reasoning_effort(eff);
+        }
+    }
     if !app.schedule_auto_poke_followup_if_needed()
         && !app.schedule_overnight_poke_followup_if_needed()
     {

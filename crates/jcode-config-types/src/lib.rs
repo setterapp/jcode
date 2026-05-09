@@ -364,6 +364,23 @@ pub struct AgentsConfig {
     pub memory_sidecar_enabled: bool,
 }
 
+/// Per-task-type model assignment.
+///
+/// Maps short slot names (e.g. `"plan"`, `"code"`, `"read"`, `"debug"`) to
+/// a model spec. Slash commands `/<slot> <prompt>` snapshot the active
+/// model, swap to the slot's model for one turn, then restore.
+///
+/// Spec format: `"model-id"` or `"model-id+effort=high"`.
+/// Examples:
+///   `claude-opus-4-7`
+///   `claude-sonnet-4-6+effort=high`
+///   `gpt-5.4-mini`
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct TaskModelsConfig {
+    pub assignments: BTreeMap<String, String>,
+}
+
 /// Automatic end-of-turn code review configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]

@@ -288,8 +288,7 @@ enum DeltaInfo {
     InputJsonDelta { partial_json: String },
     #[serde(rename = "thinking_delta")]
     ThinkingDelta {
-        #[serde(rename = "thinking")]
-        _thinking: String,
+        thinking: String,
     },
     #[serde(rename = "signature_delta")]
     SignatureDelta {
@@ -390,7 +389,13 @@ impl ClaudeEventTranslator {
                 DeltaInfo::InputJsonDelta { partial_json } => {
                     vec![StreamEvent::ToolInputDelta(partial_json)]
                 }
-                DeltaInfo::ThinkingDelta { .. } => Vec::new(),
+                // Stream the model's thinking content to the TUI so the
+                // user sees real-time progress (matches OpenAI/Bedrock).
+                // ThinkingStart was already emitted on ContentBlockInfo.
+                DeltaInfo::ThinkingDelta { thinking } => {
+                    vec![StreamEvent::ThinkingDelta(thinking)]
+                }
+                // Signature deltas are protocol metadata, not human-readable.
                 DeltaInfo::SignatureDelta { .. } => Vec::new(),
                 DeltaInfo::Other => Vec::new(),
             },

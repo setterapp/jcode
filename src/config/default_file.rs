@@ -183,6 +183,20 @@ cross_provider_failover = "countdown"
 # "claude-sonnet-4-6" = "high"
 # "gpt-5.4-mini" = "medium"
 
+[task_models.assignments]
+# Per-task-type model assignment. Slash commands swap the active model for
+# ONE turn (then restore) based on which slot is used.
+# Spec format: "model-id" or "model-id+effort=high".
+# plan = "claude-opus-4-7"
+# code = "claude-sonnet-4-6"
+# read = "claude-haiku-4-5-20251001"
+# debug = "claude-opus-4-7+effort=high"
+# explain = "claude-haiku-4-5-20251001"
+# test = "claude-sonnet-4-6"
+# Note: each /slot swap incurs a prompt-cache miss because Anthropic + OpenAI
+# tie cache slots to the model id. Use slots at task boundaries, not per
+# turn, for best caching.
+
 [status_line]
 # Custom bottom status bar driven by a user shell script (Claude Code-style).
 # When enabled, jcode runs `command` every `interval_ms` ms, passes session
