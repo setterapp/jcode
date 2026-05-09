@@ -33,12 +33,19 @@ impl SubagentTool {
         requested_model: Option<&str>,
         existing_session_model: Option<&str>,
         parent_subagent_model: Option<&str>,
+        provider_name: &str,
         provider_model: &str,
     ) -> String {
+        // Provider-aware overrides land between explicit choices and the
+        // active provider's main model. This lets users keep
+        // `swarm_model_by_provider.anthropic = "claude-haiku-..."` AND
+        // `swarm_model_by_provider.openai = "gpt-5.4-mini"` so subagents
+        // route to the correct cheap model regardless of which provider
+        // the user is currently on.
         requested_model
             .or(existing_session_model)
             .or(parent_subagent_model)
-            .or(crate::config::config().agents.swarm_model.as_deref())
+            .or_else(|| crate::config::config().agents.resolve_swarm_model(provider_name))
             .unwrap_or(provider_model)
             .to_string()
     }
@@ -139,10 +146,12 @@ impl Tool for SubagentTool {
         };
         let parent_subagent_model = Self::preferred_parent_subagent_model(&ctx.session_id);
         let provider_model = self.provider.model();
+        let provider_name = self.provider.name();
         let resolved_model = Self::resolve_model(
             params.model.as_deref(),
             session.model.as_deref(),
             parent_subagent_model.as_deref(),
+            provider_name,
             &provider_model,
         );
         session.model = Some(resolved_model.clone());
@@ -395,25 +404,37 @@ mod tests {
                 Some("explicit"),
                 Some("existing"),
                 Some("parent"),
+                "anthropic",
                 "provider"
             ),
             "explicit"
         );
         assert_eq!(
-            super::SubagentTool::resolve_model(None, Some("existing"), Some("parent"), "provider"),
+            super::SubagentTool::resolve_model(
+                None,
+                Some("existing"),
+                Some("parent"),
+                "anthropic",
+                "provider"
+            ),
             "existing"
         );
         assert_eq!(
-            super::SubagentTool::resolve_model(None, None, Some("parent"), "provider"),
+            super::SubagentTool::resolve_model(
+                None,
+                None,
+                Some("parent"),
+                "anthropic",
+                "provider"
+            ),
             "parent"
         );
-        let configured_or_provider = crate::config::config()
-            .agents
-            .swarm_model
-            .as_deref()
+        let agents = &crate::config::config().agents;
+        let configured_or_provider = agents
+            .resolve_swarm_model("anthropic")
             .unwrap_or("provider");
         assert_eq!(
-            super::SubagentTool::resolve_model(None, None, None, "provider"),
+            super::SubagentTool::resolve_model(None, None, None, "anthropic", "provider"),
             configured_or_provider
         );
     }

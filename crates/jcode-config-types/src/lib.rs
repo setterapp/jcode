@@ -356,12 +356,43 @@ pub struct AuthConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AgentsConfig {
-    /// Optional default model override for spawned swarm/subagent sessions.
+    /// Default model override for spawned swarm/subagent sessions.
+    /// Used as a fallback when no provider-specific override matches.
     pub swarm_model: Option<String>,
-    /// Optional default model override for the memory sidecar.
+    /// Provider-aware swarm model overrides. Resolved by matching the
+    /// active provider name (`anthropic`, `openai`, `gemini`, `copilot`,
+    /// `cursor`, `bedrock`, `openrouter`). Falls back to `swarm_model`
+    /// then to the active provider's main model when missing.
+    pub swarm_model_by_provider: BTreeMap<String, String>,
+    /// Default model override for the memory sidecar.
     pub memory_model: Option<String>,
+    /// Provider-aware memory sidecar model overrides — same key set as
+    /// `swarm_model_by_provider`.
+    pub memory_model_by_provider: BTreeMap<String, String>,
     /// Whether memory should use the sidecar for relevance/extraction.
     pub memory_sidecar_enabled: bool,
+}
+
+impl AgentsConfig {
+    /// Pick the right swarm-model override for the currently-active
+    /// provider. Resolution order:
+    ///   1. `swarm_model_by_provider[provider_name]`
+    ///   2. `swarm_model`
+    ///   3. None — caller falls back to the provider's main model
+    pub fn resolve_swarm_model(&self, provider_name: &str) -> Option<&str> {
+        self.swarm_model_by_provider
+            .get(provider_name)
+            .map(|s| s.as_str())
+            .or_else(|| self.swarm_model.as_deref())
+    }
+
+    /// Same as `resolve_swarm_model` but for the memory sidecar.
+    pub fn resolve_memory_model(&self, provider_name: &str) -> Option<&str> {
+        self.memory_model_by_provider
+            .get(provider_name)
+            .map(|s| s.as_str())
+            .or_else(|| self.memory_model.as_deref())
+    }
 }
 
 /// Per-task-type model assignment.
