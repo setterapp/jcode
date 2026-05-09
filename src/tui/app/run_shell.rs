@@ -16,6 +16,12 @@ impl App {
         crate::tui::status_line_runner::spawn_runner(
             crate::config::config().status_line.clone(),
         );
+        // Trigger an initial usage fetch so the statusline can show 5h/7d
+        // utilization without the user having to run `/usage` first.
+        // Cached after the first hit; subsequent ticks reuse it cheaply.
+        if crate::config::config().status_line.is_active() {
+            self.request_usage_report();
+        }
 
         loop {
             let desired_redraw = crate::tui::redraw_interval(&self);
@@ -106,6 +112,12 @@ impl App {
         crate::tui::status_line_runner::spawn_runner(
             crate::config::config().status_line.clone(),
         );
+        // Trigger an initial usage fetch so the statusline can show 5h/7d
+        // utilization without the user having to run `/usage` first.
+        // Cached after the first hit; subsequent ticks reuse it cheaply.
+        if crate::config::config().status_line.is_active() {
+            self.request_usage_report();
+        }
         let mut handterm_native_scroll =
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();
         let mut remote_state = remote::RemoteRunState::default();

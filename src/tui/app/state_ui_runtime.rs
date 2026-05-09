@@ -206,11 +206,20 @@ impl App {
         }
     }
 
-    /// Get context usage as percentage
+    /// Get context usage as percentage. Uses live stream tokens during a
+    /// turn; falls back to `last_turn_input_tokens` between turns so the
+    /// bar shows a real number after the first response instead of
+    /// dropping back to 0%.
     pub fn context_usage_percent(&self) -> f64 {
-        self.current_stream_context_tokens()
-            .map(|tokens| (tokens as f64 / self.context_limit as f64) * 100.0)
-            .unwrap_or(0.0)
+        let tokens = self
+            .current_stream_context_tokens()
+            .or(self.last_turn_input_tokens);
+        match tokens {
+            Some(t) if self.context_limit > 0 => {
+                (t as f64 / self.context_limit as f64) * 100.0
+            }
+            _ => 0.0,
+        }
     }
 
     /// Time since last streaming event (for detecting stale connections)
@@ -293,9 +302,12 @@ impl App {
     }
 
     /// Current stream's input-token usage, used to derive the context bar.
-    /// Returns 0 when the model is idle / no stream-context tokens reported.
+    /// Falls back to `last_turn_input_tokens` so the bar persists between
+    /// turns instead of snapping to 0% when the model is idle.
     pub fn session_current_usage_tokens(&self) -> u64 {
-        self.current_stream_context_tokens().unwrap_or(0)
+        self.current_stream_context_tokens()
+            .or(self.last_turn_input_tokens)
+            .unwrap_or(0)
     }
 
     /// Seconds until the rate-limit window resets, if a reset time was seen.
