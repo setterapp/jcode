@@ -47,6 +47,13 @@ impl App {
         self.set_status_notice("Usage → refreshing");
     }
 
+    /// Request a background usage refresh that only updates the inline strip —
+    /// no chat card is inserted. Used for automatic fetches (startup, periodic).
+    pub(super) fn request_usage_report_silent(&mut self) {
+        self.usage_report_silent = true;
+        self.request_usage_report();
+    }
+
     pub(super) fn request_usage_report(&mut self) {
         use crate::bus::{Bus, BusEvent};
 

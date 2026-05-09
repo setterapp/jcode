@@ -972,6 +972,9 @@ pub struct App {
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
+    /// When true, usage reports update the inline strip only — no chat card is inserted.
+    /// Set for automatic/background fetches (e.g. startup, status_line refresh).
+    usage_report_silent: bool,
     /// Last time the passive overnight progress card polled its run files.
     last_overnight_card_refresh: Option<Instant>,
 }

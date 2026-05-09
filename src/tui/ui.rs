@@ -1880,12 +1880,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let provider_strip_height: u16 = 1; // always-visible provider auth/status strip
     // Inline usage strip (5h/Weekly bars) shown below the input, replacing the floating widget.
     let widget_data = app.info_widget_data();
-    let usage_strip_height: u16 = if widget_data
-        .usage_info
-        .as_ref()
-        .map(|u| u.available)
-        .unwrap_or(false)
-        && !show_donut
+    // Show the inline usage strip whenever the provider has time-windowed limits
+    // (Anthropic/OpenAI OAuth), regardless of whether `available` is true yet.
+    // CostBased/Copilot also show if available (they display cost/tokens instead).
+    let usage_strip_height: u16 = if !show_donut
+        && widget_data.usage_info.as_ref().map(|u| {
+            use crate::tui::info_widget::UsageProvider;
+            match u.provider {
+                UsageProvider::Anthropic | UsageProvider::OpenAI => true,
+                UsageProvider::CostBased | UsageProvider::Copilot => u.available,
+                UsageProvider::None => false,
+            }
+        }).unwrap_or(false)
     {
         1
     } else {

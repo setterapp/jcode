@@ -86,8 +86,8 @@ diff_mode = "inline"
 # Center all content by default (default: false)
 centered = false
 
-# Pin read images to a side pane (default: true)
-pin_images = true
+# Pin read images to a side pane (default: false)
+pin_images = false
 
 # Wrap long lines in the pinned diff pane (default: true)
 # Set to false for horizontal scrolling instead of wrapping

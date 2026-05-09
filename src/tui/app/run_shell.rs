@@ -19,8 +19,9 @@ impl App {
         // Trigger an initial usage fetch so the statusline can show 5h/7d
         // utilization without the user having to run `/usage` first.
         // Cached after the first hit; subsequent ticks reuse it cheaply.
+        // Silent mode: update the inline strip only, no chat card inserted.
         if crate::config::config().status_line.is_active() {
-            self.request_usage_report();
+            self.request_usage_report_silent();
         }
 
         loop {
@@ -115,8 +116,9 @@ impl App {
         // Trigger an initial usage fetch so the statusline can show 5h/7d
         // utilization without the user having to run `/usage` first.
         // Cached after the first hit; subsequent ticks reuse it cheaply.
+        // Silent mode: update the inline strip only, no chat card inserted.
         if crate::config::config().status_line.is_active() {
-            self.request_usage_report();
+            self.request_usage_report_silent();
         }
         let mut handterm_native_scroll =
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();

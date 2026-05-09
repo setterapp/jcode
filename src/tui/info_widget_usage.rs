@@ -340,7 +340,13 @@ fn format_tokens(tokens: u64) -> String {
 /// Shows 5h/Weekly (and Spark if present) all on one line, Claude Code style.
 /// Returns an empty `Line` when usage data is not available.
 pub fn render_usage_inline_strip(info: &UsageInfo, _width: u16) -> Line<'static> {
-    if !info.available {
+    // For CostBased/Copilot we only render when available.
+    // For Anthropic/OpenAI we render always (shows 0% while data loads).
+    let has_time_limits = matches!(
+        info.provider,
+        UsageProvider::Anthropic | UsageProvider::OpenAI
+    );
+    if !has_time_limits && !info.available {
         return Line::default();
     }
 
