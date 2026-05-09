@@ -324,14 +324,19 @@ impl App {
         // "unknown" because `self.provider` is `InertRuntimeProvider` for
         // remote clients (see app.rs:982-1003). Local mode unchanged.
         let model_id = self.kv_cache_provider_model();
-        let model_display = model_id.clone();
+        // Translate raw id to a Claude-Code-style label so bash scripts
+        // can use `.model.display_name` and get "Sonnet 4.6" / "Opus 4.7
+        // (1M context)" instead of "claude-sonnet-4-6".
+        let model_display =
+            crate::tui::status_line_runner::humanize_model_id(&model_id);
         let cwd = std::env::current_dir().unwrap_or_default();
         let branch = super::helpers::gather_git_info().map(|info| info.branch);
 
         // Both rate-limit windows come from the synchronous usage cache —
         // populated at startup + on every TUI usage refresh. Convert ISO
-        // timestamps to "seconds until reset" so bash scripts can render
-        // remaining time without parsing dates themselves.
+        // timestamps to "seconds until reset" + extract the utilization
+        // percentage so bash scripts get both fields under
+        // `rate_limits.<bucket>` (Claude Code parity).
         let usage_now = crate::usage::get_sync();
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -351,6 +356,8 @@ impl App {
             .seven_day_resets_at
             .as_deref()
             .and_then(parse_secs);
+        let five_hour_used_percentage = (usage_now.five_hour as f64) * 100.0;
+        let seven_day_used_percentage = (usage_now.seven_day as f64) * 100.0;
 
         let snapshot = crate::tui::status_line_runner::StatusLineSnapshot {
             model_id,
@@ -363,6 +370,8 @@ impl App {
             current_usage_tokens: self.session_current_usage_tokens(),
             total_input_tokens: self.session_total_input_tokens(),
             total_output_tokens: self.session_total_output_tokens(),
+            five_hour_used_percentage,
+            seven_day_used_percentage,
             five_hour_resets_in_secs,
             seven_day_resets_in_secs,
         };

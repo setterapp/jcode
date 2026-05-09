@@ -45,6 +45,10 @@ pub struct StatusLineSnapshot {
     pub current_usage_tokens: u64,
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
+    /// 5h window utilization (0.0..=100.0). 0 if not known.
+    pub five_hour_used_percentage: f64,
+    /// 7d window utilization (0.0..=100.0). 0 if not known.
+    pub seven_day_used_percentage: f64,
     /// Seconds remaining until 5h rate limit resets.
     pub five_hour_resets_in_secs: Option<i64>,
     /// Seconds remaining until 7d rate limit resets.
@@ -104,6 +108,10 @@ struct RateLimitsPayload {
 struct RateBucketPayload {
     /// Unix timestamp (seconds) when the bucket resets.
     resets_at: i64,
+    /// Window utilization 0..=100. Matches Claude Code's
+    /// `rate_limits.<bucket>.used_percentage` field name so existing
+    /// `~/.claude/statusline-command.sh` style scripts work unchanged.
+    used_percentage: f64,
 }
 
 fn snapshot_cell() -> &'static Mutex<StatusLineSnapshot> {
@@ -236,19 +244,38 @@ fn build_payload_json(snapshot: &StatusLineSnapshot) -> Result<String, serde_jso
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let rate_limits =
-        if snapshot.five_hour_resets_in_secs.is_some() || snapshot.seven_day_resets_in_secs.is_some() {
-            Some(RateLimitsPayload {
-                five_hour: snapshot
-                    .five_hour_resets_in_secs
-                    .map(|s| RateBucketPayload { resets_at: now_secs + s }),
-                seven_day: snapshot
-                    .seven_day_resets_in_secs
-                    .map(|s| RateBucketPayload { resets_at: now_secs + s }),
-            })
-        } else {
-            None
-        };
+    let has_five_hour = snapshot.five_hour_resets_in_secs.is_some()
+        || snapshot.five_hour_used_percentage > 0.0;
+    let has_seven_day = snapshot.seven_day_resets_in_secs.is_some()
+        || snapshot.seven_day_used_percentage > 0.0;
+    let rate_limits = if has_five_hour || has_seven_day {
+        Some(RateLimitsPayload {
+            five_hour: if has_five_hour {
+                Some(RateBucketPayload {
+                    resets_at: snapshot
+                        .five_hour_resets_in_secs
+                        .map(|s| now_secs + s)
+                        .unwrap_or(0),
+                    used_percentage: snapshot.five_hour_used_percentage,
+                })
+            } else {
+                None
+            },
+            seven_day: if has_seven_day {
+                Some(RateBucketPayload {
+                    resets_at: snapshot
+                        .seven_day_resets_in_secs
+                        .map(|s| now_secs + s)
+                        .unwrap_or(0),
+                    used_percentage: snapshot.seven_day_used_percentage,
+                })
+            } else {
+                None
+            },
+        })
+    } else {
+        None
+    };
 
     let payload = ScriptInputPayload {
         model: ModelPayload {
@@ -275,6 +302,64 @@ fn build_payload_json(snapshot: &StatusLineSnapshot) -> Result<String, serde_jso
     };
 
     serde_json::to_string(&payload)
+}
+
+/// Map a raw model id to a Claude Code-style human-readable label.
+/// Used by `state_ui_runtime::publish_status_line_snapshot` to set
+/// `model_display`. Falls back to the raw id for unknown models so
+/// custom / OpenAI-compatible / OpenRouter aliases still appear.
+pub fn humanize_model_id(model_id: &str) -> String {
+    let id = model_id.trim();
+    if id.is_empty() {
+        return "unknown".to_string();
+    }
+
+    // Strip the [1m] / [200k] suffix to find the base, but remember it so
+    // we can append "(1M context)" / "(200k context)" in the label.
+    let (base, suffix_label): (&str, Option<&str>) = if let Some(stripped) =
+        id.strip_suffix("[1m]")
+    {
+        (stripped, Some(" (1M context)"))
+    } else if let Some(stripped) = id.strip_suffix("[200k]") {
+        (stripped, Some(" (200k context)"))
+    } else {
+        (id, None)
+    };
+
+    let label = match base {
+        // Anthropic
+        b if b.starts_with("claude-opus-4-7") => "Opus 4.7",
+        b if b.starts_with("claude-opus-4-6") => "Opus 4.6",
+        b if b.starts_with("claude-opus-4-5") => "Opus 4.5",
+        b if b.starts_with("claude-opus-4-1") => "Opus 4.1",
+        b if b.starts_with("claude-opus-4") => "Opus 4",
+        b if b.starts_with("claude-sonnet-4-6") => "Sonnet 4.6",
+        b if b.starts_with("claude-sonnet-4-5") => "Sonnet 4.5",
+        b if b.starts_with("claude-sonnet-4") => "Sonnet 4",
+        b if b.starts_with("claude-haiku-4-5") => "Haiku 4.5",
+        b if b.starts_with("claude-haiku-4") => "Haiku 4",
+        // OpenAI (GPT-5 family)
+        "gpt-5.5" => "GPT 5.5",
+        "gpt-5.4" => "GPT 5.4",
+        "gpt-5.4-mini" => "GPT 5.4 mini",
+        "gpt-5.3-codex" => "GPT 5.3 codex",
+        "gpt-5.3" => "GPT 5.3",
+        "gpt-5.2" => "GPT 5.2",
+        "codex-auto-review" => "Codex auto-review",
+        // Google
+        b if b.starts_with("gemini-2.5-pro") => "Gemini 2.5 Pro",
+        b if b.starts_with("gemini-2.5-flash") => "Gemini 2.5 Flash",
+        b if b.starts_with("gemini-2.0-flash") => "Gemini 2.0 Flash",
+        b if b.starts_with("gemini-1.5-pro") => "Gemini 1.5 Pro",
+        b if b.starts_with("gemini-1.5-flash") => "Gemini 1.5 Flash",
+        // Unknown — keep raw id (handles OpenRouter / OpenAI-compatible /
+        // custom local models).
+        _ => return base.to_string(),
+    };
+    match suffix_label {
+        Some(suffix) => format!("{}{}", label, suffix),
+        None => label.to_string(),
+    }
 }
 
 async fn run_script(
