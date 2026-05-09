@@ -35,17 +35,14 @@ impl Config {
         }
     }
 
-    /// Save config to file
+    /// Save config to file. Uses an atomic temp-file + rename + fsync via
+    /// `crate::storage::write_text_atomic`, so a SIGKILL or power loss mid-save
+    /// cannot leave `config.toml` truncated. The previous content is preserved
+    /// at `config.toml.bak`.
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::path().ok_or_else(|| anyhow::anyhow!("No config path"))?;
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
         let content = toml::to_string_pretty(self)?;
-        std::fs::write(&path, content)?;
+        crate::storage::write_text_atomic(&path, &content)?;
         Ok(())
     }
 

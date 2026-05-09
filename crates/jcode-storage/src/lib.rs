@@ -230,6 +230,13 @@ pub fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     write_json_inner(path, value, true)
 }
 
+/// Atomic, durable text write — same `.tmp` + rename + fsync semantics as `write_json`,
+/// preserving a `.bak` of the previous content. Use for config files where partial writes
+/// from a crash would leave the user with a broken state.
+pub fn write_text_atomic(path: &Path, content: &str) -> Result<()> {
+    write_bytes_inner(path, content.as_bytes(), true)
+}
+
 pub fn write_json_secret<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     write_json_inner(path, value, true)?;
     if let Some(parent) = path.parent() {
@@ -372,4 +379,64 @@ pub fn append_json_line_fast<T: Serialize + ?Sized>(path: &Path, value: &T) -> R
     file.write_all(b"\n")?;
     file.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn write_text_atomic_creates_file_and_preserves_bak_on_overwrite() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("config.toml");
+
+        write_text_atomic(&path, "first = true").expect("first write");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read first"),
+            "first = true"
+        );
+
+        write_text_atomic(&path, "second = true").expect("second write");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read second"),
+            "second = true"
+        );
+
+        let bak = path.with_extension("bak");
+        assert!(
+            bak.exists(),
+            "bak should exist after overwrite at {}",
+            bak.display()
+        );
+        assert_eq!(
+            std::fs::read_to_string(&bak).expect("read bak"),
+            "first = true",
+            "bak should hold the previous content"
+        );
+    }
+
+    #[test]
+    fn write_text_atomic_does_not_leave_tmp_files() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("config.toml");
+
+        write_text_atomic(&path, "x = 1").expect("write");
+
+        let stray_tmp: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("readdir")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.tmp.")
+            })
+            .collect();
+        assert!(
+            stray_tmp.is_empty(),
+            "no stray tmp files should remain, found: {:?}",
+            stray_tmp.iter().map(|e| e.file_name()).collect::<Vec<_>>()
+        );
+    }
 }
