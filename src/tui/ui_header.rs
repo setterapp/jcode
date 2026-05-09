@@ -2,7 +2,7 @@ use super::box_utils::render_rounded_box;
 use super::changelog::get_unseen_changelog_entries;
 use super::{
     TuiState, binary_age, dim_color, header_name_color, header_session_color,
-    is_running_stable_release, semver, shorten_model_name,
+    is_running_stable_release, pending_color, semver, shorten_model_name,
 };
 use crate::auth::{AuthState, AuthStatus};
 use crate::tui::color_support::rgb;
@@ -390,12 +390,11 @@ pub(super) fn build_provider_strip_line(
         spans.push(Span::styled(dot_char(*state), dot_style));
 
         let label_style = if is_active {
-            // Use the existing accent token so we don't introduce a new color.
             Style::default()
                 .fg(header_name_color())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(dim_color())
+            Style::default().fg(pending_color())
         };
         spans.push(Span::styled(format!(" {} ", label), label_style));
     }

@@ -2128,7 +2128,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             strip_area.width as usize,
             active_provider_label,
         );
-        frame.render_widget(ratatui::widgets::Paragraph::new(strip_line), strip_area);
+        frame.render_widget(
+            ratatui::widgets::Paragraph::new(strip_line)
+                .style(Style::default().bg(user_bg())),
+            strip_area,
+        );
     }
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
