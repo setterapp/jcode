@@ -1878,12 +1878,26 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let donut_height: u16 = if show_donut { 14 } else { 0 };
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
     let provider_strip_height: u16 = 1; // always-visible provider auth/status strip
+    // Inline usage strip (5h/Weekly bars) shown below the input, replacing the floating widget.
+    let widget_data = app.info_widget_data();
+    let usage_strip_height: u16 = if widget_data
+        .usage_info
+        .as_ref()
+        .map(|u| u.available)
+        .unwrap_or(false)
+        && !show_donut
+    {
+        1
+    } else {
+        0
+    };
     let fixed_height = 1
         + queued_height
         + notification_height
         + inline_block_height
         + inline_ui_gap_height
         + input_height
+        + usage_strip_height
         + donut_height
         + provider_strip_height;
     let available_height = chat_area.height;
@@ -1958,35 +1972,39 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Use packed layout when content fits, scrolling layout otherwise
     let use_packed = content_height + fixed_height <= available_height;
 
-    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut, provider strip
+    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input,
+    //         usage strip, donut, provider strip
     // All vertical chunks are within the chat_area (left column).
-    // chunks[8] is a 1-row always-visible provider auth/status strip; new index appended
-    // at the end so existing code referencing chunks[2]/chunks[6]/chunks[7] still works.
+    // chunks[0]=messages  chunks[1]=queued  chunks[2]=status  chunks[3]=notification
+    // chunks[4]=inline_ui chunks[5]=inline_gap chunks[6]=input  chunks[7]=usage_strip
+    // chunks[8]=donut      chunks[9]=provider_strip
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if use_packed {
             vec![
-                Constraint::Length(content_height.max(1)), // Messages (exact height)
-                Constraint::Length(queued_height),         // Queued messages (above status)
-                Constraint::Length(1),                     // Status line
-                Constraint::Length(notification_height),   // Notification line
-                Constraint::Length(inline_block_height),   // Inline UI
-                Constraint::Length(inline_ui_gap_height),  // Inline UI/input spacing
-                Constraint::Length(input_height),          // Input
-                Constraint::Length(donut_height),          // Donut animation
-                Constraint::Length(provider_strip_height), // Provider auth strip (always visible)
+                Constraint::Length(content_height.max(1)), // [0] Messages (exact height)
+                Constraint::Length(queued_height),         // [1] Queued messages
+                Constraint::Length(1),                     // [2] Status line
+                Constraint::Length(notification_height),   // [3] Notification line
+                Constraint::Length(inline_block_height),   // [4] Inline UI
+                Constraint::Length(inline_ui_gap_height),  // [5] Inline UI/input spacing
+                Constraint::Length(input_height),          // [6] Input
+                Constraint::Length(usage_strip_height),    // [7] Usage strip (5h/Weekly)
+                Constraint::Length(donut_height),          // [8] Donut animation
+                Constraint::Length(provider_strip_height), // [9] Provider auth strip
             ]
         } else {
             vec![
-                Constraint::Min(3),                        // Messages (scrollable)
-                Constraint::Length(queued_height),         // Queued messages (above status)
-                Constraint::Length(1),                     // Status line
-                Constraint::Length(notification_height),   // Notification line
-                Constraint::Length(inline_block_height),   // Inline UI
-                Constraint::Length(inline_ui_gap_height),  // Inline UI/input spacing
-                Constraint::Length(input_height),          // Input
-                Constraint::Length(donut_height),          // Donut animation
-                Constraint::Length(provider_strip_height), // Provider auth strip (always visible)
+                Constraint::Min(3),                        // [0] Messages (scrollable)
+                Constraint::Length(queued_height),         // [1] Queued messages
+                Constraint::Length(1),                     // [2] Status line
+                Constraint::Length(notification_height),   // [3] Notification line
+                Constraint::Length(inline_block_height),   // [4] Inline UI
+                Constraint::Length(inline_ui_gap_height),  // [5] Inline UI/input spacing
+                Constraint::Length(input_height),          // [6] Input
+                Constraint::Length(usage_strip_height),    // [7] Usage strip (5h/Weekly)
+                Constraint::Length(donut_height),          // [8] Donut animation
+                Constraint::Length(provider_strip_height), // [9] Provider auth strip
             ]
         })
         .split(chat_area);
@@ -2189,14 +2207,26 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         &mut debug_capture,
     );
 
+    // Inline usage strip — 5h/Weekly bars below the input (Claude Code style).
+    if usage_strip_height > 0 {
+        let usage_area = chunks[7];
+        if let Some(info) = widget_data.usage_info.as_ref() {
+            let line = info_widget::render_usage_inline_strip(info, usage_area.width);
+            frame.render_widget(
+                Paragraph::new(line),
+                usage_area,
+            );
+        }
+    }
+
     if donut_height > 0 {
-        animations::draw_idle_animation(frame, app, chunks[7]);
+        animations::draw_idle_animation(frame, app, chunks[8]);
     }
 
     // Bottom strip — when [status_line] hook is configured we render the user
     // shell script's output (ANSI parsed). Otherwise we fall back to the
     // built-in provider auth strip so the row is always meaningful.
-    let strip_area = chunks[8];
+    let strip_area = chunks[9];
     if strip_area.height > 0 && strip_area.width > 0 {
         let cfg = crate::config::config();
         if cfg.status_line.is_active() {
@@ -2226,7 +2256,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
-    let widget_data = app.info_widget_data();
+    // widget_data was already fetched earlier for the inline usage strip.
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;

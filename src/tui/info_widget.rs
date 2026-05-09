@@ -65,6 +65,7 @@ use todos_render::{render_todos_compact, render_todos_expanded, render_todos_wid
 #[cfg(test)]
 use usage_render::render_usage_bar;
 use usage_render::{render_context_usage_line, render_usage_compact, render_usage_widget};
+pub(crate) use usage_render::render_usage_inline_strip;
 
 /// Types of info widgets that can be displayed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -644,11 +645,9 @@ impl InfoWidgetData {
                 .map(|b| b.running_count > 0)
                 .unwrap_or(false),
             WidgetKind::AmbientMode => false,
-            WidgetKind::UsageLimits => self
-                .usage_info
-                .as_ref()
-                .map(|u| u.available)
-                .unwrap_or(false),
+            // UsageLimits is now rendered as an inline strip below the input area.
+            // Disable the floating overlay to avoid duplication.
+            WidgetKind::UsageLimits => false,
             WidgetKind::KvCache => self.cache_hit_info.is_some(),
             WidgetKind::ModelInfo => self.model.is_some(),
             WidgetKind::Tips => false,
