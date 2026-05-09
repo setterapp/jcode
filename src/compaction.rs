@@ -679,6 +679,14 @@ impl CompactionManager {
         if self.suppress_compaction_until_new_message {
             return false;
         }
+        // Cooldown: respect `min_turns_between_compactions` for ALL modes,
+        // not just Proactive/Semantic. The user-configured cooldown was
+        // previously a silent no-op in Reactive mode, allowing compaction
+        // to re-fire on the very next turn after a successful compaction
+        // when the post-compaction summary itself was large.
+        if self.turns_since_last_compact < self.compaction_config.min_turns_between_compactions {
+            return false;
+        }
         let active = self.active_messages(all_messages);
         match self.mode {
             CompactionMode::Reactive => {
