@@ -18,6 +18,7 @@ pub mod permissions;
 mod remote_diff;
 pub mod screenshot;
 pub mod session_picker;
+pub(crate) mod status_line_runner;
 mod stream_buffer;
 pub mod test_harness;
 mod ui;

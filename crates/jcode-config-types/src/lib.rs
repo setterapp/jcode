@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Compaction mode
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -614,6 +615,13 @@ pub struct ProviderConfig {
     /// Copilot premium request mode: "normal", "one", or "zero"
     /// "zero" means all requests are free (no premium requests consumed)
     pub copilot_premium: Option<String>,
+
+    /// Per-model reasoning/thinking effort override.
+    /// Keyed by canonical model id (e.g. `claude-sonnet-4-6`, `gpt-5.4-mini`),
+    /// value is one of `low | medium | high | xhigh`. Falls back to provider-
+    /// global setting (e.g. `openai_reasoning_effort`) when absent.
+    /// Cycled inline by `←/→` arrows in the model picker.
+    pub model_effort_overrides: BTreeMap<String, String>,
 }
 
 impl Default for ProviderConfig {
@@ -629,6 +637,7 @@ impl Default for ProviderConfig {
             cross_provider_failover: CrossProviderFailoverMode::Countdown,
             same_provider_account_failover: true,
             copilot_premium: None,
+            model_effort_overrides: BTreeMap::new(),
         }
     }
 }

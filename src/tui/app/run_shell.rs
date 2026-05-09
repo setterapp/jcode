@@ -12,6 +12,10 @@ impl App {
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();
         // Subscribe to bus for background task completion notifications
         let mut bus_receiver = Bus::global().subscribe();
+        // Spawn user-defined status-line hook runner (idempotent, no-op when disabled).
+        crate::tui::status_line_runner::spawn_runner(
+            crate::config::config().status_line.clone(),
+        );
 
         loop {
             let desired_redraw = crate::tui::redraw_interval(&self);
@@ -25,6 +29,7 @@ impl App {
                     terminal.clear()?;
                     self.force_full_redraw = false;
                 }
+                self.publish_status_line_snapshot();
                 terminal.draw(|frame| crate::tui::ui::draw(frame, &self))?;
                 if let Some(native) = handterm_native_scroll.as_mut() {
                     native.sync_from_app(&self);
@@ -98,6 +103,9 @@ impl App {
         let mut redraw_period = crate::tui::redraw_interval(&self);
         let mut redraw_interval = interval(redraw_period);
         let mut needs_redraw = true;
+        crate::tui::status_line_runner::spawn_runner(
+            crate::config::config().status_line.clone(),
+        );
         let mut handterm_native_scroll =
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();
         let mut remote_state = remote::RemoteRunState::default();
@@ -115,6 +123,7 @@ impl App {
                     terminal.clear()?;
                     self.force_full_redraw = false;
                 }
+                self.publish_status_line_snapshot();
                 terminal.draw(|frame| crate::tui::ui::draw(frame, &self))?;
                 needs_redraw = false;
             }

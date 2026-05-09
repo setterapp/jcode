@@ -297,6 +297,9 @@ pub enum BusEvent {
     SidePanelUpdated(SidePanelUpdated),
     /// Deferred Mermaid rendering completed and cached content may now be visible
     MermaidRenderCompleted,
+    /// User-defined `[status_line]` shell hook produced fresh output. The TUI
+    /// should redraw to pick up the new bottom-bar text from the runner cell.
+    StatusLineUpdated,
 }
 
 pub struct Bus {

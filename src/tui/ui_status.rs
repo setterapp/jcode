@@ -83,29 +83,37 @@ pub(super) fn format_age(secs: i64) -> String {
 }
 
 pub(super) fn binary_age() -> Option<String> {
-    let git_date = env!("JCODE_GIT_DATE");
+    // Result is computed once per process — neither the binary's build time
+    // nor the git commit date changes during a session, so this used to call
+    // `chrono::Utc::now()` (a vDSO syscall) on every TUI cache miss. Now
+    // memoized in a OnceLock to avoid it during streaming render loops.
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Option<String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let git_date = env!("JCODE_GIT_DATE");
+            let now = chrono::Utc::now();
+            let build_date = crate::build::current_binary_built_at()?;
+            let build_secs = now.signed_duration_since(build_date).num_seconds();
 
-    let now = chrono::Utc::now();
+            let git_commit_date =
+                chrono::DateTime::parse_from_str(git_date, "%Y-%m-%d %H:%M:%S %z")
+                    .ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc));
+            let git_secs = git_commit_date.map(|d| now.signed_duration_since(d).num_seconds());
 
-    let build_date = crate::build::current_binary_built_at()?;
-    let build_secs = now.signed_duration_since(build_date).num_seconds();
+            let build_age = format_age(build_secs);
 
-    let git_commit_date = chrono::DateTime::parse_from_str(git_date, "%Y-%m-%d %H:%M:%S %z")
-        .ok()
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-    let git_secs = git_commit_date.map(|d| now.signed_duration_since(d).num_seconds());
-
-    let build_age = format_age(build_secs);
-
-    if let Some(git_secs) = git_secs {
-        let diff = (git_secs - build_secs).abs();
-        if diff > 300 {
-            let git_age = format_age(git_secs);
-            return Some(format!("{}, code {}", build_age, git_age));
-        }
-    }
-
-    Some(build_age)
+            if let Some(git_secs) = git_secs {
+                let diff = (git_secs - build_secs).abs();
+                if diff > 300 {
+                    let git_age = format_age(git_secs);
+                    return Some(format!("{}, code {}", build_age, git_age));
+                }
+            }
+            Some(build_age)
+        })
+        .clone()
 }
 
 pub(super) fn shorten_model_name(model: &str) -> String {

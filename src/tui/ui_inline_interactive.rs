@@ -96,8 +96,21 @@ fn picker_entry_display_name(entry: &crate::tui::PickerEntry) -> String {
     } else {
         default_marker.to_string()
     };
+    let effort_glyph = effort_glyph_for_entry(entry);
+    format!("{}{}{}", entry.name, suffix, effort_glyph)
+}
 
-    format!("{}{}", entry.name, suffix)
+/// Render the effort/thinking-budget indicator next to a model row.
+/// Empty string when the model doesn't expose effort. Matches the symbol
+/// convention of Claude Code's effort UI: `○ low · ◐ medium · ● high · ◉ xhigh`.
+fn effort_glyph_for_entry(entry: &crate::tui::PickerEntry) -> &'static str {
+    match entry.effort.as_deref() {
+        Some("low") => "  ○",
+        Some("medium") => "  ◐",
+        Some("high") => "  ●",
+        Some("xhigh") => "  ◉",
+        _ => "",
+    }
 }
 
 fn picker_row_marker(is_row_selected: bool, unavailable: bool) -> &'static str {

@@ -271,6 +271,75 @@ impl App {
         self.provider.model()
     }
 
+    /// Total cost (USD) accumulated this session. Used by the status-line hook
+    /// snapshot and the info widget.
+    pub fn session_total_cost_usd(&self) -> f32 {
+        self.total_cost
+    }
+
+    /// Provider's reported context window size, in tokens.
+    pub fn session_context_window_tokens(&self) -> u64 {
+        self.context_limit
+    }
+
+    /// Total input tokens accumulated this session.
+    pub fn session_total_input_tokens(&self) -> u64 {
+        self.total_input_tokens
+    }
+
+    /// Total output tokens accumulated this session.
+    pub fn session_total_output_tokens(&self) -> u64 {
+        self.total_output_tokens
+    }
+
+    /// Current stream's input-token usage, used to derive the context bar.
+    /// Returns 0 when the model is idle / no stream-context tokens reported.
+    pub fn session_current_usage_tokens(&self) -> u64 {
+        self.current_stream_context_tokens().unwrap_or(0)
+    }
+
+    /// Seconds until the rate-limit window resets, if a reset time was seen.
+    /// Negative values are clamped to 0 (already past).
+    pub fn rate_limit_resets_in_secs(&self) -> Option<i64> {
+        self.rate_limit_reset.map(|inst| {
+            let now = std::time::Instant::now();
+            if inst <= now {
+                0
+            } else {
+                inst.duration_since(now).as_secs() as i64
+            }
+        })
+    }
+
+    /// Build a fresh snapshot for the user-defined status-line hook.
+    /// Cheap (one struct alloc + a few clones); safe to call every frame
+    /// from the render path. Pushes into the global runner cell so the
+    /// hook task picks it up on its next tick.
+    pub fn publish_status_line_snapshot(&self) {
+        if !crate::config::config().status_line.is_active() {
+            return;
+        }
+        let model_id = self.provider_model();
+        let model_display = model_id.clone();
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let branch = super::helpers::gather_git_info().map(|info| info.branch);
+        let snapshot = crate::tui::status_line_runner::StatusLineSnapshot {
+            model_id,
+            model_display,
+            cwd,
+            branch,
+            total_cost_usd: self.session_total_cost_usd(),
+            context_used_percentage: self.context_usage_percent(),
+            context_window_size: self.session_context_window_tokens(),
+            current_usage_tokens: self.session_current_usage_tokens(),
+            total_input_tokens: self.session_total_input_tokens(),
+            total_output_tokens: self.session_total_output_tokens(),
+            five_hour_resets_in_secs: self.rate_limit_resets_in_secs(),
+            seven_day_resets_in_secs: None,
+        };
+        crate::tui::status_line_runner::set_snapshot(snapshot);
+    }
+
     /// Get the upstream provider (e.g., which provider OpenRouter routed to)
     pub fn upstream_provider(&self) -> Option<&str> {
         self.upstream_provider.as_deref()

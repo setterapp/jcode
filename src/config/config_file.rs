@@ -104,6 +104,37 @@ impl Config {
         Ok(())
     }
 
+    /// Persist a per-model effort override, set when the user cycles
+    /// effort with `←/→` in the model picker and confirms with Enter.
+    /// Pass `None` to remove the override (fall back to provider default).
+    pub fn set_model_effort_override(
+        model_id: &str,
+        effort: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let model_id = model_id.trim();
+        if model_id.is_empty() {
+            return Ok(());
+        }
+        let mut cfg = Self::load();
+        match effort {
+            Some(e) if !e.trim().is_empty() => {
+                cfg.provider
+                    .model_effort_overrides
+                    .insert(model_id.to_string(), e.trim().to_string());
+            }
+            _ => {
+                cfg.provider.model_effort_overrides.remove(model_id);
+            }
+        }
+        cfg.save()?;
+        crate::logging::info(&format!(
+            "Saved model_effort_overrides[{}]={}",
+            model_id,
+            effort.unwrap_or("(removed)"),
+        ));
+        Ok(())
+    }
+
     /// Update the persisted OpenAI transport preference.
     pub fn set_openai_transport(value: Option<&str>) -> anyhow::Result<()> {
         let mut cfg = Self::load();

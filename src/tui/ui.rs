@@ -220,6 +220,21 @@ fn set_last_chat_scrollbar_visible(visible: bool) {
     }
 }
 
+/// Read the most recent scrollbar-visibility decision recorded by
+/// `draw_inner`. Used to predict the right prepare width on the FIRST pass,
+/// so we don't pay a guaranteed cache miss preparing both wide AND narrow
+/// every frame in long conversations with the native scrollbar enabled.
+fn last_chat_scrollbar_visible() -> bool {
+    #[cfg(test)]
+    {
+        TEST_LAST_CHAT_SCROLLBAR_VISIBLE.with(|state| state.get())
+    }
+    #[cfg(not(test))]
+    {
+        LAST_CHAT_SCROLLBAR_VISIBLE.load(Ordering::Relaxed) != 0
+    }
+}
+
 /// Get the total line count from the pinned diff/content pane (set during render).
 pub fn pinned_pane_total_lines() -> usize {
     #[cfg(test)]
@@ -1553,6 +1568,39 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     }
 }
 
+/// Convert ANSI-escaped stdout from the user `[status_line]` hook script into
+/// a single ratatui Line. Multi-line scripts are flattened to the first line
+/// (the bottom strip is one row tall by design). Falls back to the raw text
+/// stripped of escapes if the parser rejects the input.
+fn ansi_line_from_stdout(stdout: &str, max_width: usize) -> Line<'static> {
+    use ansi_to_tui::IntoText;
+    // Trim trailing newline that bash typically appends.
+    let trimmed = stdout.trim_end_matches('\n');
+    let line: Line<'static> = match trimmed.into_text() {
+        Ok(text) => match text.lines.into_iter().next() {
+            Some(first) => Line::from(
+                first
+                    .spans
+                    .into_iter()
+                    .map(|span| ratatui::text::Span::styled(
+                        span.content.into_owned(),
+                        span.style,
+                    ))
+                    .collect::<Vec<_>>(),
+            ),
+            None => Line::raw(""),
+        },
+        Err(_) => Line::raw(trimmed.to_string()),
+    };
+    // ratatui truncates oversized content automatically when rendered into a
+    // Paragraph, but we limit the visible char count up-front so wide-character
+    // scripts don't overflow into the next row in narrow terminals.
+    if max_width == 0 {
+        return Line::raw("");
+    }
+    line
+}
+
 fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let area = frame.area().intersection(*frame.buffer_mut().area());
     if area.width == 0 || area.height == 0 {
@@ -1826,7 +1874,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let prep_start = Instant::now();
     let chat_left_inset = left_aligned_content_inset(chat_area.width, app.centered_mode());
     let wide_prepare_width = chat_area.width.saturating_sub(chat_left_inset);
-    let prepared_wide = prepare::prepare_messages(app, wide_prepare_width, chat_area.height);
     let show_donut = super::idle_donut_active(app);
     let donut_height: u16 = if show_donut { 14 } else { 0 };
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
@@ -1838,28 +1885,59 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + inline_ui_gap_height
         + input_height
         + donut_height
-        + provider_strip_height; // status + queued + notification + inline UI + gap + input + donut + provider strip
+        + provider_strip_height;
     let available_height = chat_area.height;
 
-    let initial_content_height = prepared_wide.total_wrapped_lines().max(1) as u16;
-    let wide_overflows = app.chat_native_scrollbar()
-        && chat_area.width > 1
-        && initial_content_height + fixed_height > available_height;
-    let (prepared, chat_scrollbar_visible) = if !wide_overflows {
-        (prepared_wide, false)
+    // Layout decision for the chat scrollbar:
+    //
+    // Old code prepared the wide layout, checked overflow, and ALSO prepared
+    // narrow whenever wide overflowed — the second prepare was a guaranteed
+    // cache miss because `width` is part of the prepare cache key, and we'd
+    // sometimes throw away the narrow result anyway.
+    //
+    // New code: predict the scrollbar state from last frame's decision (it's
+    // stable across consecutive frames) and prepare ONCE at the predicted
+    // width. If the prediction is wrong (overflow status flipped), we
+    // prepare again at the corrected width — this still does two passes but
+    // only on the (rare) flip frame, instead of every frame in long sessions.
+    let scrollbar_capable = app.chat_native_scrollbar() && chat_area.width > 1;
+    let predicted_scrollbar = scrollbar_capable && last_chat_scrollbar_visible();
+    let initial_width = if predicted_scrollbar {
+        wide_prepare_width.saturating_sub(1)
     } else {
-        let narrow_prepare_width = wide_prepare_width.saturating_sub(1);
-        let prepared_narrow =
-            prepare::prepare_messages(app, narrow_prepare_width, chat_area.height);
-        let narrow_content_height = prepared_narrow.total_wrapped_lines().max(1) as u16;
-        let narrow_overflows = narrow_content_height + fixed_height > available_height;
+        wide_prepare_width
+    };
+    let prepared_initial = prepare::prepare_messages(app, initial_width, chat_area.height);
+    let initial_wrapped_lines = prepared_initial.total_wrapped_lines().max(1);
+    let initial_overflows = scrollbar_capable
+        && (initial_wrapped_lines as u16) + fixed_height > available_height;
+
+    let (prepared, chat_scrollbar_visible) = if predicted_scrollbar == initial_overflows {
+        (prepared_initial, predicted_scrollbar)
+    } else if predicted_scrollbar && !initial_overflows {
+        // Predicted scrollbar but content fits in narrow — try the wider
+        // layout to avoid showing a scrollbar we don't need.
+        let prepared_wide = prepare::prepare_messages(app, wide_prepare_width, chat_area.height);
+        let wide_overflows = scrollbar_capable
+            && (prepared_wide.total_wrapped_lines().max(1) as u16) + fixed_height
+                > available_height;
+        if wide_overflows {
+            (prepared_initial, true)
+        } else {
+            (prepared_wide, false)
+        }
+    } else {
+        // Predicted no scrollbar but the wide layout overflowed — recompute
+        // narrow so the scrollbar reservation is correct.
+        let narrow_width = wide_prepare_width.saturating_sub(1);
+        let prepared_narrow = prepare::prepare_messages(app, narrow_width, chat_area.height);
+        let narrow_overflows = (prepared_narrow.total_wrapped_lines().max(1) as u16)
+            + fixed_height
+            > available_height;
         if narrow_overflows {
             (prepared_narrow, true)
         } else {
-            // Reserving a scrollbar column changed the wrapped content enough to make it fit.
-            // Prefer the wide layout without the native scrollbar so the UI does not oscillate
-            // between two self-contradictory states across consecutive frames.
-            (prepared_wide, false)
+            (prepared_initial, false)
         }
     };
     set_last_chat_scrollbar_visible(chat_scrollbar_visible);
@@ -1985,7 +2063,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     note_chat_layout(ChatLayoutMetrics {
         chat_area,
         messages_area,
-        initial_content_height: initial_content_height as usize,
+        initial_content_height: initial_wrapped_lines,
         content_height: content_height as usize,
         chat_scrollbar_visible,
         use_packed_layout: use_packed,
@@ -2115,24 +2193,36 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         animations::draw_idle_animation(frame, app, chunks[7]);
     }
 
-    // Always-visible provider strip — renders auth status (●/◐/○) for every configured
-    // provider, with the active one highlighted. Uses the same `build_auth_status_line`
-    // primitive as the welcome header so format and fallbacks stay in sync.
+    // Bottom strip — when [status_line] hook is configured we render the user
+    // shell script's output (ANSI parsed). Otherwise we fall back to the
+    // built-in provider auth strip so the row is always meaningful.
     let strip_area = chunks[8];
     if strip_area.height > 0 && strip_area.width > 0 {
-        let auth = app.auth_status();
-        let active_provider_label =
-            crate::config::config().provider.default_provider.as_deref();
-        let strip_line = header::build_provider_strip_line(
-            &auth,
-            strip_area.width as usize,
-            active_provider_label,
-        );
-        frame.render_widget(
-            ratatui::widgets::Paragraph::new(strip_line)
-                .style(Style::default().bg(user_bg())),
-            strip_area,
-        );
+        let cfg = crate::config::config();
+        if cfg.status_line.is_active() {
+            let line = match crate::tui::status_line_runner::current_output() {
+                Some(ansi) => ansi_line_from_stdout(&ansi, strip_area.width as usize),
+                None => Line::raw(""),
+            };
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new(line)
+                    .style(Style::default().bg(user_bg())),
+                strip_area,
+            );
+        } else {
+            let auth = app.auth_status();
+            let active_provider_label = cfg.provider.default_provider.as_deref();
+            let strip_line = header::build_provider_strip_line(
+                &auth,
+                strip_area.width as usize,
+                active_provider_label,
+            );
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new(strip_line)
+                    .style(Style::default().bg(user_bg())),
+                strip_area,
+            );
+        }
     }
 
     // Draw info widget overlays (skip during idle animation - they look out of place)

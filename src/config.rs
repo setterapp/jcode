@@ -73,6 +73,14 @@ pub struct Config {
 
     /// Auto-judge configuration
     pub autojudge: AutoJudgeConfig,
+
+    /// Custom bottom status bar driven by a user shell script.
+    /// When enabled, the runner spawns the command every `interval_ms`,
+    /// passes session context as JSON via stdin, and renders stdout
+    /// (with ANSI color escapes) at the bottom of the TUI.
+    /// Mirrors the `statusLine` feature in Claude Code so existing
+    /// scripts (e.g. `~/.claude/statusline-command.sh`) work verbatim.
+    pub status_line: StatusLineConfig,
 }
 
 /// External dictation / speech-to-text integration.
@@ -97,6 +105,57 @@ impl Default for DictationConfig {
             key: "off".to_string(),
             timeout_secs: 90,
         }
+    }
+}
+
+/// Custom bottom status bar driven by a user shell script.
+///
+/// When `enabled` is true and `command` is set, jcode spawns the command
+/// every `interval_ms` milliseconds, passes session context as JSON via
+/// stdin, and renders stdout (ANSI escape codes interpreted) at the bottom
+/// of the TUI. JSON schema is a superset of Claude Code's `statusLine` hook
+/// payload so existing scripts work without modification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StatusLineConfig {
+    /// Whether the hook is active. When false, the bottom bar falls back to
+    /// the built-in provider auth strip.
+    pub enabled: bool,
+    /// Shell command to execute (e.g. `bash ~/.jcode/statusline.sh`).
+    pub command: Option<String>,
+    /// How often to invoke the command. Clamped to `[200, 60_000]` ms.
+    pub interval_ms: u64,
+    /// Maximum time to wait for the command to finish before SIGKILL.
+    pub timeout_ms: u64,
+}
+
+impl Default for StatusLineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: None,
+            interval_ms: 1000,
+            timeout_ms: 500,
+        }
+    }
+}
+
+impl StatusLineConfig {
+    /// Returns `interval_ms` clamped to a sensible range so a misconfigured
+    /// value can't melt the user's CPU or visually freeze for minutes.
+    pub fn effective_interval_ms(&self) -> u64 {
+        self.interval_ms.clamp(200, 60_000)
+    }
+
+    /// Returns `timeout_ms` clamped so the runner can't be blocked by a
+    /// runaway script.
+    pub fn effective_timeout_ms(&self) -> u64 {
+        self.timeout_ms.clamp(50, 10_000)
+    }
+
+    /// True iff the hook is configured and should run.
+    pub fn is_active(&self) -> bool {
+        self.enabled && self.command.as_deref().map(str::trim).is_some_and(|c| !c.is_empty())
     }
 }
 

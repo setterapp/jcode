@@ -452,6 +452,13 @@ pub(super) async fn send_history(
         provider_meta_ms,
         compaction_mode_ms,
     ) = {
+        // Snapshot everything that's SYNC under the agent lock, plus the
+        // Registry handle (cheap clone) needed for the async lookups below.
+        // Then DROP the guard before awaiting `tool_names` and
+        // `compaction_mode` — those re-acquire the registry's own internal
+        // lock, which previously stalled because the outer `Mutex<Agent>`
+        // guard was held across both `.await`s. Removing this stall is
+        // measurable on `send_history` p95 latency under load.
         let agent_guard = agent.lock().await;
         let agent_lock_ms = agent_lock_start.elapsed().as_millis();
         let provider = agent_guard.provider_handle();
@@ -460,10 +467,6 @@ pub(super) async fn send_history(
         let (messages, images) = agent_guard.get_history_and_rendered_images();
         let history_snapshot_ms = history_snapshot_start.elapsed().as_millis();
         let image_render_ms = 0;
-
-        let tool_names_start = Instant::now();
-        let tool_names = agent_guard.tool_names().await;
-        let tool_names_ms = tool_names_start.elapsed().as_millis();
 
         let (available_models, available_models_ms) = if include_model_catalog {
             let available_models_start = Instant::now();
@@ -476,10 +479,6 @@ pub(super) async fn send_history(
             (Vec::new(), 0)
         };
 
-        // Model-route expansion can be relatively expensive (provider/account routing,
-        // endpoint cache reads, etc.). The TUI already supports later
-        // AvailableModelsUpdated events, so keep the initial History payload fast and
-        // let the background refresh populate detailed routes asynchronously.
         let available_model_routes = Vec::new();
         let model_routes_ms = 0;
 
@@ -492,26 +491,44 @@ pub(super) async fn send_history(
         let service_tier = provider.service_tier();
         let provider_meta_ms = provider_meta_start.elapsed().as_millis();
 
+        let registry_for_async = agent_guard.registry();
+        let is_canary = agent_guard.is_canary();
+        let provider_name = agent_guard.provider_name();
+        let provider_model = agent_guard.provider_model();
+        let subagent_model = agent_guard.subagent_model();
+        let autoreview_enabled = agent_guard.autoreview_enabled();
+        let autojudge_enabled = agent_guard.autojudge_enabled();
+        let last_upstream_provider = agent_guard.last_upstream_provider();
+        let last_connection_type = agent_guard.last_connection_type();
+        let last_status_detail = agent_guard.last_status_detail();
+        drop(agent_guard);
+
+        // Async work after the lock is released. Other tasks waiting on the
+        // agent lock get to run while we're awaiting the registry.
+        let tool_names_start = Instant::now();
+        let tool_names = registry_for_async.tool_names().await;
+        let tool_names_ms = tool_names_start.elapsed().as_millis();
+
         let compaction_mode_start = Instant::now();
-        let compaction_mode = agent_guard.compaction_mode().await;
+        let compaction_mode = registry_for_async.compaction().read().await.mode();
         let compaction_mode_ms = compaction_mode_start.elapsed().as_millis();
 
         (
             messages,
             images,
-            agent_guard.is_canary(),
-            agent_guard.provider_name(),
-            agent_guard.provider_model(),
-            agent_guard.subagent_model(),
-            agent_guard.autoreview_enabled(),
-            agent_guard.autojudge_enabled(),
+            is_canary,
+            provider_name,
+            provider_model,
+            subagent_model,
+            autoreview_enabled,
+            autojudge_enabled,
             available_models,
             available_model_routes,
             skills,
             tool_names,
-            agent_guard.last_upstream_provider(),
-            agent_guard.last_connection_type(),
-            agent_guard.last_status_detail(),
+            last_upstream_provider,
+            last_connection_type,
+            last_status_detail,
             reasoning_effort,
             service_tier,
             compaction_mode,

@@ -162,6 +162,12 @@ pub(super) fn handle_bus_event(
             app.invalidate_model_picker_cache();
             true
         }
+        Ok(BusEvent::StatusLineUpdated) => {
+            // Status line hook produced fresh stdout; trigger a redraw so the
+            // bottom bar reflects the new content. Cheap event — coalesced
+            // by the runner only firing on actual content changes.
+            true
+        }
         Ok(BusEvent::ProviderModelActivated {
             session_id,
             model,

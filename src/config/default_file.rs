@@ -176,6 +176,25 @@ cross_provider_failover = "countdown"
 # Copilot premium mode: "normal" (default), "one" (first msg only), "zero" (all free)
 # Set to "zero" if you have premium Copilot and want free requests
 # copilot_premium = "zero"
+#
+# Per-model effort overrides — populated by the model picker (←/→ on a row).
+# You can also edit by hand: "model_id" = "low" | "medium" | "high" | "xhigh"
+# [provider.model_effort_overrides]
+# "claude-sonnet-4-6" = "high"
+# "gpt-5.4-mini" = "medium"
+
+[status_line]
+# Custom bottom status bar driven by a user shell script (Claude Code-style).
+# When enabled, jcode runs `command` every `interval_ms` ms, passes session
+# context as JSON via stdin, and renders stdout (with ANSI colors) at the
+# bottom of the TUI. Falls back to the built-in provider auth strip when off.
+#
+# Example: reuse Claude Code's statusline script
+# enabled = true
+# command = "bash /Users/you/.claude/statusline-command.sh"
+# interval_ms = 1000     # 200..=60000 ms
+# timeout_ms = 500       # 50..=10000 ms — script killed if it exceeds this
+enabled = false
 
 [ambient]
 # Ambient mode: background agent that maintains your codebase

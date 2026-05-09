@@ -296,9 +296,20 @@ pub(super) fn prepare_messages(
         return Arc::new(prepare_messages_inner(app, width, height));
     }
 
+    // `height` only affects rendering on the empty-welcome screen
+    // (`prepare_messages_inner` line ~432 — vertical centering padding).
+    // Including height unconditionally caused full-frame rebuilds on every
+    // terminal resize even mid-conversation, where height is irrelevant.
+    // Bucket to 0 once messages exist so resize stays cheap; full
+    // invalidation is preserved while the welcome screen is the active view.
+    let cache_height = if app.display_messages_version() == 0 {
+        height
+    } else {
+        0
+    };
     let key = FullPrepCacheKey {
         width,
-        height,
+        height: cache_height,
         diff_mode: app.diff_mode(),
         messages_version: app.display_messages_version(),
         diagram_mode: app.diagram_mode(),

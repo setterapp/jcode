@@ -1729,6 +1729,17 @@ impl App {
                     if picker.uses_compact_navigation() {
                         return Ok(());
                     }
+                    // On the model picker's primary column, cycle the
+                    // selected row's effort/thinking level inline so users
+                    // can adjust per-model intensity without leaving the
+                    // picker. Tab/BackTab still move between columns.
+                    if picker.kind == crate::tui::PickerKind::Model
+                        && picker.column == 0
+                        && let Some(&idx) = picker.filtered.get(picker.selected)
+                        && cycle_entry_effort(&mut picker.entries[idx], 1)
+                    {
+                        return Ok(());
+                    }
                     if picker.column < picker.max_navigable_column()
                         && let Some(&idx) = picker.filtered.get(picker.selected)
                         && (picker.entries[idx].options.len() > 1 || picker.column > 0)
@@ -1740,6 +1751,17 @@ impl App {
             KeyCode::Left | KeyCode::BackTab => {
                 if let Some(ref mut picker) = self.inline_interactive_state {
                     if picker.uses_compact_navigation() {
+                        return Ok(());
+                    }
+                    // Symmetric to Right — cycle effort the other direction
+                    // when on column 0 of the model picker. BackTab still
+                    // moves columns when not on the model column.
+                    if matches!(code, KeyCode::Left)
+                        && picker.kind == crate::tui::PickerKind::Model
+                        && picker.column == 0
+                        && let Some(&idx) = picker.filtered.get(picker.selected)
+                        && cycle_entry_effort(&mut picker.entries[idx], -1)
+                    {
                         return Ok(());
                     }
                     if picker.column > 0 {
@@ -1992,8 +2014,16 @@ impl App {
                                 }
                             }
                         }
-                        if let Some(effort) = effort {
-                            let _ = self.provider.set_reasoning_effort(&effort);
+                        if let Some(ref effort_value) = effort {
+                            let _ = self.provider.set_reasoning_effort(effort_value);
+                            // Persist per-model override so next session
+                            // remembers the user's effort choice for this
+                            // exact model id. Failures are logged but not
+                            // surfaced — the in-memory effort still applies.
+                            let _ = crate::config::Config::set_model_effort_override(
+                                &bare_name,
+                                Some(effort_value),
+                            );
                         }
                         if !route_detail.is_empty() {
                             self.push_display_message(DisplayMessage::system(format!(
@@ -2147,4 +2177,36 @@ impl App {
             Self::apply_inline_interactive_filter(picker);
         }
     }
+}
+
+/// Cycle the per-row effort indicator on a Model picker entry.
+///
+/// Returns `true` if a cycle happened (so the key handler stops there and
+/// doesn't fall through to column navigation). `false` means the entry
+/// doesn't have a meaningful effort value (e.g. a non-OpenAI model that
+/// doesn't expose effort) — in that case the caller falls back to its
+/// default behavior (column navigation).
+///
+/// `direction` is +1 for "next" (Right) or -1 for "prev" (Left).
+pub(super) fn cycle_entry_effort(entry: &mut crate::tui::PickerEntry, direction: i32) -> bool {
+    // Order matters: this is the cycle the user navigates with arrows.
+    // Must match the values accepted by OpenAiProviderImpl::set_reasoning_effort
+    // (see src/provider/openai_provider_impl.rs:444).
+    const CYCLE: &[&str] = &["low", "medium", "high", "xhigh"];
+
+    let current = entry.effort.as_deref().unwrap_or("");
+    if current.is_empty() {
+        // Entry doesn't carry an effort value — let the caller fall through
+        // to default Left/Right column navigation.
+        return false;
+    }
+    let pos = CYCLE.iter().position(|v| *v == current).unwrap_or(0);
+    let len = CYCLE.len();
+    let next_pos = if direction >= 0 {
+        (pos + 1) % len
+    } else {
+        (pos + len - 1) % len
+    };
+    entry.effort = Some(CYCLE[next_pos].to_string());
+    true
 }

@@ -1,0 +1,54 @@
+Benchmarking: ./target/release/jcode
+============================================================
+
+--help (binary load):
+  Min:    8.77 ms
+  Max:    13.54 ms
+  Mean:   10.46 ms
+  Median: 9.79 ms
+  Stdev:  1.84 ms
+
+--version:
+  Min:    7.28 ms
+  Max:    8.96 ms
+  Mean:   8.18 ms
+  Median: 7.94 ms
+  Stdev:  0.70 ms
+
+Measuring isolated server startup (5 runs)...
+
+Server ready (isolated socket connectable): No successful runs
+
+Measuring isolated cold client startup (5 runs)...
+Traceback (most recent call last):
+  File "/Users/marcospozzetti/Documents/Projects/jcode/scripts/bench_startup.py", line 367, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/marcospozzetti/Documents/Projects/jcode/scripts/bench_startup.py", line 317, in main
+    cold_profiles = measure_cold_client_startup(binary, args.runs)
+  File "/Users/marcospozzetti/Documents/Projects/jcode/scripts/bench_startup.py", line 216, in measure_cold_client_startup
+    subprocess.run(
+    ~~~~~~~~~~~~~~^
+        ["timeout", "3s", script_bin, "-qefc", command, "/dev/null"],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        check=False,
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 554, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 1038, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 1989, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'timeout'
