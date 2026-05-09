@@ -1,0 +1,42 @@
+{
+  "label": "after-2026-05-09",
+  "timestamp": "2026-05-09 16:59:58 +0200",
+  "binary": "/Users/marcospozzetti/Documents/Projects/jcode/target/release/jcode",
+  "binary_info": {
+    "size_bytes": 70139872,
+    "size_mb": 66.89
+  },
+  "git": {
+    "commit": "02b6b24ca37cb683d6c28dd2b55d54584fcd53ba",
+    "short_commit": "02b6b24c",
+    "branch": "feat/auto-refresh-models-and-provider-strip",
+    "dirty": false
+  },
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "help_timing_ms": {
+    "runs": 7,
+    "min_ms": 8.622,
+    "median_ms": 10.357,
+    "p95_ms": 14.752,
+    "max_ms": 783.263,
+    "mean_ms": 121.096,
+    "stdev_ms": 291.996
+  },
+  "version_timing_ms": {
+    "runs": 7,
+    "min_ms": 8.22,
+    "median_ms": 8.473,
+    "p95_ms": 8.821,
+    "max_ms": 8.991,
+    "mean_ms": 8.572,
+    "stdev_ms": 0.299
+  },
+  "server_idle": {
+    "rss_idle_kb": 33776,
+    "rss_idle_mb": 32.98,
+    "provider_init_ms": 633
+  }
+}
