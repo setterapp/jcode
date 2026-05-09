@@ -1830,13 +1830,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let show_donut = super::idle_donut_active(app);
     let donut_height: u16 = if show_donut { 14 } else { 0 };
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
+    let provider_strip_height: u16 = 1; // always-visible provider auth/status strip
     let fixed_height = 1
         + queued_height
         + notification_height
         + inline_block_height
         + inline_ui_gap_height
         + input_height
-        + donut_height; // status + queued + notification + inline UI + gap + input + donut
+        + donut_height
+        + provider_strip_height; // status + queued + notification + inline UI + gap + input + donut + provider strip
     let available_height = chat_area.height;
 
     let initial_content_height = prepared_wide.total_wrapped_lines().max(1) as u16;
@@ -1878,8 +1880,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Use packed layout when content fits, scrolling layout otherwise
     let use_packed = content_height + fixed_height <= available_height;
 
-    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut
+    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut, provider strip
     // All vertical chunks are within the chat_area (left column).
+    // chunks[8] is a 1-row always-visible provider auth/status strip; new index appended
+    // at the end so existing code referencing chunks[2]/chunks[6]/chunks[7] still works.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if use_packed {
@@ -1892,17 +1896,19 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(inline_ui_gap_height),  // Inline UI/input spacing
                 Constraint::Length(input_height),          // Input
                 Constraint::Length(donut_height),          // Donut animation
+                Constraint::Length(provider_strip_height), // Provider auth strip (always visible)
             ]
         } else {
             vec![
-                Constraint::Min(3),                       // Messages (scrollable)
-                Constraint::Length(queued_height),        // Queued messages (above status)
-                Constraint::Length(1),                    // Status line
-                Constraint::Length(notification_height),  // Notification line
-                Constraint::Length(inline_block_height),  // Inline UI
-                Constraint::Length(inline_ui_gap_height), // Inline UI/input spacing
-                Constraint::Length(input_height),         // Input
-                Constraint::Length(donut_height),         // Donut animation
+                Constraint::Min(3),                        // Messages (scrollable)
+                Constraint::Length(queued_height),         // Queued messages (above status)
+                Constraint::Length(1),                     // Status line
+                Constraint::Length(notification_height),   // Notification line
+                Constraint::Length(inline_block_height),   // Inline UI
+                Constraint::Length(inline_ui_gap_height),  // Inline UI/input spacing
+                Constraint::Length(input_height),          // Input
+                Constraint::Length(donut_height),          // Donut animation
+                Constraint::Length(provider_strip_height), // Provider auth strip (always visible)
             ]
         })
         .split(chat_area);
@@ -2107,6 +2113,22 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     if donut_height > 0 {
         animations::draw_idle_animation(frame, app, chunks[7]);
+    }
+
+    // Always-visible provider strip — renders auth status (●/◐/○) for every configured
+    // provider, with the active one highlighted. Uses the same `build_auth_status_line`
+    // primitive as the welcome header so format and fallbacks stay in sync.
+    let strip_area = chunks[8];
+    if strip_area.height > 0 && strip_area.width > 0 {
+        let auth = app.auth_status();
+        let active_provider_label =
+            crate::config::config().provider.default_provider.as_deref();
+        let strip_line = header::build_provider_strip_line(
+            &auth,
+            strip_area.width as usize,
+            active_provider_label,
+        );
+        frame.render_widget(ratatui::widgets::Paragraph::new(strip_line), strip_area);
     }
 
     // Draw info widget overlays (skip during idle animation - they look out of place)

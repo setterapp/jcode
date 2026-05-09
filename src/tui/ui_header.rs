@@ -8,6 +8,7 @@ use crate::auth::{AuthState, AuthStatus};
 use crate::tui::color_support::rgb;
 use crate::tui::connection_type_icon;
 use ratatui::prelude::*;
+use ratatui::style::Modifier;
 #[cfg(test)]
 use std::sync::OnceLock;
 
@@ -215,6 +216,188 @@ pub(super) fn build_auth_status_line(auth: &AuthStatus, max_width: usize) -> Lin
             format!(" {} ", label),
             Style::default().fg(dim_color()),
         ));
+    }
+
+    Line::from(spans)
+}
+
+/// Maps the user-facing `default_provider` config string to the canonical label
+/// prefix used inside `build_auth_status_line` (e.g. "claude" → "anthropic" /
+/// "an"). Returns the prefixes the strip uses so we can highlight the active
+/// provider unambiguously.
+fn config_provider_to_label_prefixes(config_name: &str) -> &'static [&'static str] {
+    match config_name {
+        "claude" | "anthropic" => &["anthropic", "an"],
+        "openai" => &["openai", "oa"],
+        "copilot" => &["copilot", "cp"],
+        "gemini" => &["gemini", "ge"],
+        "cursor" => &["cursor", "cu"],
+        "openrouter" => &["openrouter", "or"],
+        "bedrock" => &["bedrock", "be"],
+        "antigravity" => &["antigravity", "ag"],
+        _ => &[],
+    }
+}
+
+fn label_matches_active(label: &str, active: Option<&str>) -> bool {
+    let Some(active) = active else {
+        return false;
+    };
+    let prefixes = config_provider_to_label_prefixes(active);
+    if prefixes.is_empty() {
+        return false;
+    }
+    // Labels are like "anthropic(oauth)" or "an" — match by prefix split on '('.
+    let head = label.split('(').next().unwrap_or(label).trim();
+    prefixes.iter().any(|prefix| head == *prefix)
+}
+
+/// Always-visible provider strip used at the bottom of the TUI. Same data and
+/// fallback behavior as `build_auth_status_line`, plus:
+///   - includes Bedrock when configured
+///   - highlights the provider matching `active` (the user's `default_provider`
+///     config) with bold + a brighter dot, so the user can tell at a glance
+///     which provider their next request will hit.
+pub(super) fn build_provider_strip_line(
+    auth: &AuthStatus,
+    max_width: usize,
+    active: Option<&str>,
+) -> Line<'static> {
+    fn dot_color(state: AuthState) -> Color {
+        match state {
+            AuthState::Available => rgb(100, 200, 100),
+            AuthState::Expired => rgb(255, 200, 100),
+            AuthState::NotConfigured => rgb(80, 80, 80),
+        }
+    }
+
+    fn dot_char(state: AuthState) -> &'static str {
+        match state {
+            AuthState::Available => "●",
+            AuthState::Expired => "◐",
+            AuthState::NotConfigured => "○",
+        }
+    }
+
+    fn rendered_width(entries: &[&str]) -> usize {
+        if entries.is_empty() {
+            return 0;
+        }
+        entries.iter().map(|label| label.len() + 3).sum::<usize>() + (entries.len() - 1)
+    }
+
+    fn provider_label(name: &str, state: AuthState, method: Option<&str>) -> String {
+        match (state, method) {
+            (AuthState::NotConfigured, _) => name.to_string(),
+            (_, Some(method)) if !method.is_empty() => format!("{}({})", name, method),
+            _ => name.to_string(),
+        }
+    }
+
+    let anthropic_label = if auth.anthropic.has_oauth && auth.anthropic.has_api_key {
+        provider_label("anthropic", auth.anthropic.state, Some("oauth+key"))
+    } else if auth.anthropic.has_oauth {
+        provider_label("anthropic", auth.anthropic.state, Some("oauth"))
+    } else if auth.anthropic.has_api_key {
+        provider_label("anthropic", auth.anthropic.state, Some("key"))
+    } else {
+        provider_label("anthropic", auth.anthropic.state, None)
+    };
+
+    let openai_label = if auth.openai_has_oauth && auth.openai_has_api_key {
+        provider_label("openai", auth.openai, Some("oauth+key"))
+    } else if auth.openai_has_oauth {
+        provider_label("openai", auth.openai, Some("oauth"))
+    } else if auth.openai_has_api_key {
+        provider_label("openai", auth.openai, Some("key"))
+    } else {
+        provider_label("openai", auth.openai, None)
+    };
+
+    let gemini_label = if auth.gemini != AuthState::NotConfigured {
+        provider_label("gemini", auth.gemini, Some("oauth"))
+    } else {
+        provider_label("gemini", auth.gemini, None)
+    };
+
+    let full_specs: Vec<(String, AuthState)> = vec![
+        (anthropic_label, auth.anthropic.state),
+        ("openrouter".to_string(), auth.openrouter),
+        (openai_label, auth.openai),
+        (provider_label("cursor", auth.cursor, None), auth.cursor),
+        (provider_label("copilot", auth.copilot, None), auth.copilot),
+        (gemini_label, auth.gemini),
+        (provider_label("bedrock", auth.bedrock, None), auth.bedrock),
+        (
+            provider_label("antigravity", auth.antigravity, None),
+            auth.antigravity,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, state)| *state != AuthState::NotConfigured)
+    .collect();
+
+    let compact_specs: Vec<(String, AuthState)> = vec![
+        (
+            provider_label("an", auth.anthropic.state, None),
+            auth.anthropic.state,
+        ),
+        ("or".to_string(), auth.openrouter),
+        (provider_label("oa", auth.openai, None), auth.openai),
+        (provider_label("cu", auth.cursor, None), auth.cursor),
+        (provider_label("cp", auth.copilot, None), auth.copilot),
+        (provider_label("ge", auth.gemini, None), auth.gemini),
+        (provider_label("be", auth.bedrock, None), auth.bedrock),
+        (
+            provider_label("ag", auth.antigravity, None),
+            auth.antigravity,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, state)| *state != AuthState::NotConfigured)
+    .collect();
+
+    let full: Vec<&str> = full_specs.iter().map(|(label, _)| label.as_str()).collect();
+    let compact: Vec<&str> = compact_specs
+        .iter()
+        .map(|(label, _)| label.as_str())
+        .collect();
+
+    let provider_specs: Vec<&(String, AuthState)> = if rendered_width(&full) <= max_width {
+        full_specs.iter().collect()
+    } else if rendered_width(&compact) <= max_width {
+        compact_specs.iter().collect()
+    } else {
+        compact_specs.iter().take(4).collect()
+    };
+
+    let mut spans = Vec::new();
+    for (i, (label, state)) in provider_specs.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" ", Style::default().fg(dim_color())));
+        }
+
+        let is_active = label_matches_active(label, active);
+
+        let dot_style = if is_active {
+            // Brighter, bolder dot for the active provider regardless of state.
+            Style::default()
+                .fg(dot_color(*state))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(dot_color(*state))
+        };
+        spans.push(Span::styled(dot_char(*state), dot_style));
+
+        let label_style = if is_active {
+            // Use the existing accent token so we don't introduce a new color.
+            Style::default()
+                .fg(header_name_color())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(dim_color())
+        };
+        spans.push(Span::styled(format!(" {} ", label), label_style));
     }
 
     Line::from(spans)
@@ -946,5 +1129,87 @@ mod tests {
     fn auth_status_line_is_empty_when_nothing_was_attempted() {
         let line = build_auth_status_line(&AuthStatus::default(), 120);
         assert!(line.spans.is_empty(), "line should be empty: {line:?}");
+    }
+
+    #[test]
+    fn provider_strip_line_renders_bedrock_when_configured() {
+        let auth = AuthStatus {
+            bedrock: AuthState::Available,
+            ..AuthStatus::default()
+        };
+        let line = build_provider_strip_line(&auth, 120, None);
+        let rendered = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(rendered.contains("bedrock"), "rendered: {rendered}");
+    }
+
+    #[test]
+    fn provider_strip_line_bolds_active_provider() {
+        let auth = AuthStatus {
+            anthropic: ProviderAuth {
+                state: AuthState::Available,
+                has_oauth: true,
+                has_api_key: false,
+            },
+            openai: AuthState::Available,
+            openai_has_oauth: true,
+            openai_has_api_key: false,
+            ..AuthStatus::default()
+        };
+
+        let line = build_provider_strip_line(&auth, 120, Some("openai"));
+
+        // Find the span whose visible content contains "openai" — it must be bold.
+        let openai_span = line
+            .spans
+            .iter()
+            .find(|span| span.content.contains("openai"))
+            .expect("openai span present");
+        assert!(
+            openai_span
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD),
+            "openai label should be bold when active: {openai_span:?}"
+        );
+
+        // The anthropic span must NOT be bold (different provider).
+        let anthropic_span = line
+            .spans
+            .iter()
+            .find(|span| span.content.contains("anthropic"))
+            .expect("anthropic span present");
+        assert!(
+            !anthropic_span
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD),
+            "anthropic label should not be bold when openai is active: {anthropic_span:?}"
+        );
+    }
+
+    #[test]
+    fn provider_strip_line_handles_unknown_active_provider_gracefully() {
+        let auth = AuthStatus {
+            anthropic: ProviderAuth {
+                state: AuthState::Available,
+                has_oauth: true,
+                has_api_key: false,
+            },
+            ..AuthStatus::default()
+        };
+        let line = build_provider_strip_line(&auth, 120, Some("nonexistent-provider-xyz"));
+        // No bold spans expected — we should still render but without highlighting.
+        let any_bold = line
+            .spans
+            .iter()
+            .any(|s| s.style.add_modifier.contains(ratatui::style::Modifier::BOLD));
+        assert!(
+            !any_bold,
+            "no provider should be bolded when active provider is unknown"
+        );
     }
 }
