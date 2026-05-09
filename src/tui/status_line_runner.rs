@@ -137,7 +137,13 @@ pub fn current_output() -> Option<String> {
 /// Launch the runner task. Idempotent — second call is a no-op. Returns
 /// immediately; the actual work happens on a detached tokio task.
 pub fn spawn_runner(config: StatusLineConfig) {
+    crate::logging::info(&format!(
+        "status_line: spawn_runner called (enabled={}, has_command={})",
+        config.enabled,
+        config.command.is_some()
+    ));
     if !config.is_active() {
+        crate::logging::info("status_line: not active, skipping spawn");
         return;
     }
     {
@@ -146,6 +152,7 @@ pub fn spawn_runner(config: StatusLineConfig) {
             Err(p) => p.into_inner(),
         };
         if *started {
+            crate::logging::info("status_line: already started, skipping");
             return;
         }
         *started = true;
@@ -157,6 +164,10 @@ pub fn spawn_runner(config: StatusLineConfig) {
         Some(cmd) => cmd,
         None => return,
     };
+    crate::logging::info(&format!(
+        "status_line: starting runner interval={}ms timeout={}ms cmd={}",
+        interval_ms, timeout_ms, command
+    ));
 
     tokio::spawn(async move {
         let mut interval =
@@ -185,6 +196,7 @@ pub fn spawn_runner(config: StatusLineConfig) {
 
             match run_script(&command, &json_input, timeout_ms).await {
                 Ok(stdout) => {
+                    let len = stdout.len();
                     let changed = {
                         match output_cell().lock() {
                             Ok(mut guard) => {
@@ -201,6 +213,10 @@ pub fn spawn_runner(config: StatusLineConfig) {
                         }
                     };
                     if changed {
+                        crate::logging::info(&format!(
+                            "status_line: stdout changed ({} bytes), publishing redraw",
+                            len
+                        ));
                         Bus::global().publish(BusEvent::StatusLineUpdated);
                     }
                 }

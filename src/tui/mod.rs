@@ -527,6 +527,9 @@ pub enum PickerKind {
     Account,
     Login,
     Usage,
+    /// Pick reasoning/thinking effort for the active model.
+    /// Triggered by `/effort` with no args.
+    Effort,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -627,6 +630,17 @@ impl PickerKind {
                 shows_default_shortcut_hint: false,
                 preview_activation_column: 2,
             },
+            Self::Effort => InlineInteractiveSchema {
+                layout: InlineInteractiveLayout::Compact,
+                primary_label: "EFFORT",
+                secondary_label: "",
+                secondary_preview_label: "",
+                tertiary_label: "",
+                preview_submit_hint: "  ↵ apply",
+                active_submit_hint: "  ↑↓/jk ↵ Esc",
+                shows_default_shortcut_hint: false,
+                preview_activation_column: 0,
+            },
         }
     }
 
@@ -681,6 +695,7 @@ impl PickerKind {
                 let detail = route.map(|option| option.detail.as_str()).unwrap_or("");
                 format!("{} {} {} {}", entry.name, provider, method, detail)
             }
+            Self::Effort => entry.name.clone(),
         }
     }
 }
@@ -719,6 +734,10 @@ pub enum PickerAction {
         target: AgentModelTarget,
         clear_override: bool,
     },
+    /// Apply a specific reasoning/thinking effort level (e.g. "low",
+    /// "medium", "high", "xhigh") to the active model. Persists into
+    /// `[provider.model_effort_overrides]` so the next session remembers.
+    Effort(String),
 }
 
 /// Unified inline picker with three columns.
@@ -761,6 +780,7 @@ fn estimate_picker_action_bytes(action: &PickerAction) -> usize {
         PickerAction::Model
         | PickerAction::AgentTarget(_)
         | PickerAction::AgentModelChoice { .. } => 0,
+        PickerAction::Effort(level) => level.capacity(),
         PickerAction::Account(AccountPickerAction::Switch { provider_id, label }) => {
             provider_id.capacity() + label.capacity()
         }

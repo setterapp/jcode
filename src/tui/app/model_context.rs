@@ -1068,33 +1068,10 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/effort" {
-        let current = app.provider.reasoning_effort();
-        let efforts = app.provider.available_efforts();
-        if efforts.is_empty() {
-            app.push_display_message(DisplayMessage::system(
-                "Reasoning effort not available for this provider.".to_string(),
-            ));
-        } else {
-            let current_label = current
-                .as_deref()
-                .map(effort_display_label)
-                .unwrap_or("default");
-            let list: Vec<String> = efforts
-                .iter()
-                .map(|e| {
-                    if Some(e.to_string()) == current {
-                        format!("**{}** ← current", effort_display_label(e))
-                    } else {
-                        effort_display_label(e).to_string()
-                    }
-                })
-                .collect();
-            app.push_display_message(DisplayMessage::system(format!(
-                "Reasoning effort: {}\nAvailable: {}\nUse `/effort <level>` or Alt+←/→ to change.",
-                current_label,
-                list.join(" · ")
-            )));
-        }
+        // Open the compact effort picker (arrow keys + Enter). Falls back
+        // to the previous text-dump behavior only when the provider exposes
+        // no effort levels — handled inside `open_effort_picker`.
+        app.open_effort_picker();
         return true;
     }
 

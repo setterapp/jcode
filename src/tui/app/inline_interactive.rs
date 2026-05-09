@@ -320,6 +320,83 @@ impl App {
         );
     }
 
+    /// Open a compact picker that lists the active provider's available
+    /// effort levels and lets the user pick one with arrow keys + Enter.
+    /// Triggered by the `/effort` slash command (no args). For providers
+    /// that don't expose effort (e.g. Anthropic) we don't open the picker —
+    /// callers should detect the empty `available_efforts()` upstream.
+    pub(super) fn open_effort_picker(&mut self) {
+        let efforts = if self.is_remote {
+            Vec::new()
+        } else {
+            self.provider.available_efforts()
+        };
+        if efforts.is_empty() {
+            self.push_display_message(crate::tui::DisplayMessage::system(
+                "Reasoning effort not available for this provider.".to_string(),
+            ));
+            return;
+        }
+        let current_effort = if self.is_remote {
+            self.remote_reasoning_effort.clone()
+        } else {
+            self.provider.reasoning_effort()
+        };
+
+        let entries: Vec<crate::tui::PickerEntry> = efforts
+            .iter()
+            .map(|e| {
+                let glyph = match *e {
+                    "low" => "○",
+                    "medium" => "◐",
+                    "high" => "●",
+                    "xhigh" => "◉",
+                    _ => "·",
+                };
+                let label = match *e {
+                    "xhigh" => "max",
+                    other => other,
+                };
+                crate::tui::PickerEntry {
+                    name: format!("{}  {}", glyph, label),
+                    options: vec![crate::tui::PickerOption {
+                        provider: String::new(),
+                        api_method: e.to_string(),
+                        available: true,
+                        detail: String::new(),
+                        estimated_reference_cost_micros: None,
+                    }],
+                    action: crate::tui::PickerAction::Effort(e.to_string()),
+                    selected_option: 0,
+                    is_current: current_effort.as_deref() == Some(*e),
+                    is_default: false,
+                    recommended: false,
+                    recommendation_rank: 0,
+                    old: false,
+                    created_date: None,
+                    effort: Some(e.to_string()),
+                }
+            })
+            .collect();
+
+        let selected = entries
+            .iter()
+            .position(|e| e.is_current)
+            .unwrap_or(0);
+        let filtered: Vec<usize> = (0..entries.len()).collect();
+
+        self.inline_view_state = None;
+        self.inline_interactive_state = Some(crate::tui::InlineInteractiveState {
+            kind: crate::tui::PickerKind::Effort,
+            entries,
+            filtered,
+            selected,
+            column: 0,
+            filter: String::new(),
+            preview: false,
+        });
+    }
+
     fn open_loading_model_picker(&mut self, current_model: &str) {
         let model_label = if current_model.trim().is_empty() || current_model == "unknown" {
             "Loading models…".to_string()
@@ -1896,6 +1973,36 @@ impl App {
                 }
 
                 match entry.action {
+                    PickerAction::Effort(level) => {
+                        // Apply directly to the active provider. We don't go
+                        // through `set_model` since the model isn't changing
+                        // — only the reasoning/thinking effort is.
+                        self.inline_interactive_state = None;
+                        let model_id = self.provider.model();
+                        match self.provider.set_reasoning_effort(&level) {
+                            Ok(()) => {
+                                let _ = crate::config::Config::set_model_effort_override(
+                                    &model_id,
+                                    Some(&level),
+                                );
+                                let label = match level.as_str() {
+                                    "xhigh" => "max",
+                                    other => other,
+                                };
+                                self.push_display_message(DisplayMessage::system(format!(
+                                    "✓ Effort → {}",
+                                    label
+                                )));
+                                self.set_status_notice(format!("Effort: {}", label));
+                            }
+                            Err(e) => {
+                                self.push_display_message(DisplayMessage::error(format!(
+                                    "Failed to set effort: {}",
+                                    e
+                                )));
+                            }
+                        }
+                    }
                     PickerAction::Account(selection) => {
                         self.inline_interactive_state = None;
                         self.handle_account_picker_selection(selection);
