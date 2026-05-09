@@ -414,6 +414,10 @@ pub struct AnthropicProvider {
     max_tokens: u32,
     oauth_session_id: String,
     oauth_preflight_done: Arc<AtomicBool>,
+    /// Extended-thinking level chosen via `/effort` (`low|medium|high|xhigh`).
+    /// `None` = no extended thinking. Maps to API `thinking.budget_tokens`
+    /// at request time via `effort_to_thinking_budget`.
+    reasoning_effort: Arc<std::sync::RwLock<Option<String>>>,
 }
 
 impl AnthropicProvider {
@@ -443,6 +447,14 @@ impl AnthropicProvider {
             .and_then(|v| v.trim().parse::<u32>().ok())
             .unwrap_or(DEFAULT_MAX_TOKENS);
 
+        // Pre-populate effort from any saved per-model override (set by the
+        // user via `/effort` or the model picker's ←/→ cycling).
+        let initial_effort = crate::config::config()
+            .provider
+            .model_effort_overrides
+            .get(&model)
+            .cloned();
+
         Self {
             client: crate::provider::shared_http_client(),
             model: Arc::new(std::sync::RwLock::new(model)),
@@ -450,7 +462,28 @@ impl AnthropicProvider {
             max_tokens,
             oauth_session_id: Uuid::new_v4().to_string(),
             oauth_preflight_done: Arc::new(AtomicBool::new(false)),
+            reasoning_effort: Arc::new(std::sync::RwLock::new(initial_effort)),
         }
+    }
+
+    /// Map `/effort` level to Anthropic's `thinking.budget_tokens`. Returns
+    /// `None` for "low" / unset / unknown so the request omits the
+    /// `thinking` field entirely (model behaves as before this feature).
+    fn effort_to_thinking_budget(level: Option<&str>) -> Option<u32> {
+        match level {
+            Some("medium") => Some(4_096),
+            Some("high") => Some(10_000),
+            Some("xhigh") => Some(24_000),
+            _ => None,
+        }
+    }
+
+    fn current_thinking_budget(&self) -> Option<u32> {
+        let guard = self
+            .reasoning_effort
+            .read()
+            .unwrap_or_else(|p| p.into_inner());
+        Self::effort_to_thinking_budget(guard.as_deref())
     }
 
     /// Get the access token from credentials
@@ -893,6 +926,12 @@ impl Provider for AnthropicProvider {
         let api_messages = self.format_messages(messages, is_oauth);
         let api_tools = self.format_tools(tools, is_oauth);
 
+        let thinking = self
+            .current_thinking_budget()
+            .map(|tokens| ApiThinking {
+                kind: "enabled",
+                budget_tokens: tokens,
+            });
         let request = ApiRequest {
             model: api_model,
             max_tokens: self.max_tokens,
@@ -909,6 +948,7 @@ impl Provider for AnthropicProvider {
                 None
             },
             temperature: if is_oauth { Some(1.0) } else { None },
+            thinking,
             stream: true,
         };
 
@@ -1021,6 +1061,41 @@ impl Provider for AnthropicProvider {
         "anthropic"
     }
 
+    fn reasoning_effort(&self) -> Option<String> {
+        self.reasoning_effort
+            .read()
+            .map(|g| g.clone())
+            .unwrap_or_else(|p| p.into_inner().clone())
+    }
+
+    fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
+        // Accept the same vocabulary the OpenAI provider does so the
+        // shared `/effort` picker works uniformly. Map to thinking budget
+        // tokens at request time, not here.
+        let normalized = match effort.trim().to_ascii_lowercase().as_str() {
+            "low" | "medium" | "high" | "xhigh" => Some(effort.trim().to_lowercase()),
+            "none" | "" => None,
+            other => {
+                anyhow::bail!(
+                    "Unknown effort level for Anthropic: {} (expected low|medium|high|xhigh|none)",
+                    other
+                );
+            }
+        };
+        match self.reasoning_effort.write() {
+            Ok(mut guard) => *guard = normalized,
+            Err(p) => *p.into_inner() = normalized,
+        }
+        Ok(())
+    }
+
+    fn available_efforts(&self) -> Vec<&'static str> {
+        // "low" intentionally omitted: it maps to no extended thinking and
+        // would be visually confusing next to the others. The model still
+        // works in normal (non-thinking) mode when no effort is set.
+        vec!["medium", "high", "xhigh"]
+    }
+
     fn supports_image_input(&self) -> bool {
         true
     }
@@ -1040,6 +1115,7 @@ impl Provider for AnthropicProvider {
             oauth_preflight_done: Arc::new(AtomicBool::new(
                 self.oauth_preflight_done.load(Ordering::Relaxed),
             )),
+            reasoning_effort: self.reasoning_effort.clone(),
         })
     }
 
@@ -1083,6 +1159,12 @@ impl Provider for AnthropicProvider {
         let api_messages = self.format_messages(messages, is_oauth);
         let api_tools = self.format_tools(tools, is_oauth);
 
+        let thinking = self
+            .current_thinking_budget()
+            .map(|tokens| ApiThinking {
+                kind: "enabled",
+                budget_tokens: tokens,
+            });
         let request = ApiRequest {
             model: api_model,
             max_tokens: self.max_tokens,
@@ -1099,6 +1181,7 @@ impl Provider for AnthropicProvider {
                 None
             },
             temperature: if is_oauth { Some(1.0) } else { None },
+            thinking,
             stream: true,
         };
 
@@ -1652,7 +1735,18 @@ struct ApiRequest {
     metadata: Option<ApiMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    /// Anthropic extended-thinking config — set when `/effort` is on
+    /// medium/high/xhigh. Field omitted (= no thinking) for low/unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ApiThinking>,
     stream: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct ApiThinking {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    budget_tokens: u32,
 }
 
 #[derive(Serialize, Clone)]
