@@ -1413,7 +1413,7 @@ impl Provider for MultiProvider {
 
     fn reasoning_effort(&self) -> Option<String> {
         match self.active_provider() {
-            ActiveProvider::Claude => None,
+            ActiveProvider::Claude => self.anthropic_provider().and_then(|a| a.reasoning_effort()),
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.reasoning_effort()),
             ActiveProvider::Copilot => None,
             ActiveProvider::Antigravity => None,
@@ -1430,8 +1430,12 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
                 .set_reasoning_effort(effort),
+            ActiveProvider::Claude => self
+                .anthropic_provider()
+                .ok_or_else(|| anyhow::anyhow!("Anthropic provider not available"))?
+                .set_reasoning_effort(effort),
             _ => Err(anyhow::anyhow!(
-                "Reasoning effort is only supported for OpenAI models"
+                "Reasoning effort is only supported for OpenAI and Anthropic models"
             )),
         }
     }
@@ -1441,6 +1445,10 @@ impl Provider for MultiProvider {
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .map(|o| o.available_efforts())
+                .unwrap_or_default(),
+            ActiveProvider::Claude => self
+                .anthropic_provider()
+                .map(|a| a.available_efforts())
                 .unwrap_or_default(),
             ActiveProvider::Copilot => vec![],
             ActiveProvider::Antigravity => vec![],
