@@ -319,11 +319,13 @@ impl App {
         if !crate::config::config().status_line.is_active() {
             return;
         }
-        // Use kv_cache_provider_model so the model name resolves correctly
-        // in REMOTE mode too — `self.provider_model()` would return
-        // "unknown" because `self.provider` is `InertRuntimeProvider` for
-        // remote clients (see app.rs:982-1003). Local mode unchanged.
-        let model_id = self.kv_cache_provider_model();
+        // Use the TuiState trait's `provider_model` (defined in tui_state.rs)
+        // so we get the SAME model the persistent header shows. That impl
+        // walks: remote_provider_model → session.model → config hint →
+        // "connecting…", so it's already populated even when the inherent
+        // `App::provider_model()` (state_ui_runtime.rs:270) would return
+        // "unknown" via InertRuntimeProvider in remote mode.
+        let model_id = <Self as crate::tui::TuiState>::provider_model(self);
         // Translate raw id to a Claude-Code-style label so bash scripts
         // can use `.model.display_name` and get "Sonnet 4.6" / "Opus 4.7
         // (1M context)" instead of "claude-sonnet-4-6".
