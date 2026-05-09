@@ -572,6 +572,9 @@ pub struct FeatureConfig {
     pub message_timestamps: bool,
     /// Update channel: "stable" (releases only) or "main" (latest commits)
     pub update_channel: UpdateChannel,
+    /// Refresh every configured provider's model catalog in the background at startup
+    /// (default: true). Disable to avoid network calls on cold boot.
+    pub auto_refresh_models_on_startup: bool,
 }
 
 impl Default for FeatureConfig {
@@ -581,6 +584,7 @@ impl Default for FeatureConfig {
             swarm: true,
             message_timestamps: true,
             update_channel: UpdateChannel::default(),
+            auto_refresh_models_on_startup: true,
         }
     }
 }

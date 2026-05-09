@@ -147,6 +147,10 @@ message_timestamps = true
 # Update channel: "stable" (releases only) or "main" (latest commits on push)
 # Set to "main" for bleeding edge updates every time code is pushed
 update_channel = "stable"
+# Refresh every configured provider's model catalog in the background at startup.
+# Set to false on offline / metered networks; you can still trigger a manual
+# refresh from the TUI with /refresh-model-list.
+auto_refresh_models_on_startup = true
 
 [provider]
 # Default model (optional, uses provider default if not set)

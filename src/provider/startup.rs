@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::AtomicBool;
 
 impl MultiProvider {
     pub(super) fn spawn_post_auth_model_refresh(
@@ -330,6 +331,11 @@ impl MultiProvider {
 
         result.spawn_anthropic_catalog_refresh_if_needed();
         result.spawn_openai_catalog_refresh_if_needed();
+        if cfg.features.auto_refresh_models_on_startup {
+            result.spawn_gemini_catalog_refresh_if_needed();
+            result.spawn_cursor_catalog_refresh_if_needed();
+            result.spawn_bedrock_catalog_refresh_if_needed();
+        }
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
             "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, bedrock={}, openrouter={}, total={}ms",
@@ -421,6 +427,78 @@ impl MultiProvider {
                 ));
             }
             finish_anthropic_model_catalog_refresh_for_scope(&scope);
+        });
+    }
+
+    pub(super) fn spawn_gemini_catalog_refresh_if_needed(&self) {
+        let Some(provider) = self.gemini_provider() else {
+            return;
+        };
+        if !begin_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Gemini) {
+            return;
+        }
+        let provider: Arc<dyn Provider> = provider;
+        tokio::spawn(async move {
+            match provider.prefetch_models().await {
+                Ok(()) => {
+                    crate::bus::Bus::global().publish_models_updated();
+                }
+                Err(err) => {
+                    crate::logging::info(&format!(
+                        "Failed to refresh Gemini model catalog from provider bootstrap: {}",
+                        err
+                    ));
+                }
+            }
+            finish_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Gemini);
+        });
+    }
+
+    pub(super) fn spawn_cursor_catalog_refresh_if_needed(&self) {
+        let Some(provider) = self.cursor_provider() else {
+            return;
+        };
+        if !begin_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Cursor) {
+            return;
+        }
+        let provider: Arc<dyn Provider> = provider;
+        tokio::spawn(async move {
+            match provider.prefetch_models().await {
+                Ok(()) => {
+                    crate::bus::Bus::global().publish_models_updated();
+                }
+                Err(err) => {
+                    crate::logging::info(&format!(
+                        "Failed to refresh Cursor model catalog from provider bootstrap: {}",
+                        err
+                    ));
+                }
+            }
+            finish_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Cursor);
+        });
+    }
+
+    pub(super) fn spawn_bedrock_catalog_refresh_if_needed(&self) {
+        let Some(provider) = self.bedrock_provider() else {
+            return;
+        };
+        if !begin_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Bedrock) {
+            return;
+        }
+        let provider: Arc<dyn Provider> = provider;
+        tokio::spawn(async move {
+            match provider.prefetch_models().await {
+                Ok(()) => {
+                    crate::bus::Bus::global().publish_models_updated();
+                }
+                Err(err) => {
+                    crate::logging::info(&format!(
+                        "Failed to refresh Bedrock model catalog from provider bootstrap: {}",
+                        err
+                    ));
+                }
+            }
+            finish_extra_provider_catalog_refresh(ExtraProviderRefreshKind::Bedrock);
         });
     }
 
@@ -578,4 +656,39 @@ impl MultiProvider {
         let usage = crate::usage::get_sync();
         usage.five_hour >= 0.99 && usage.seven_day >= 0.99
     }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ExtraProviderRefreshKind {
+    Gemini,
+    Cursor,
+    Bedrock,
+}
+
+fn extra_provider_refresh_flag(kind: ExtraProviderRefreshKind) -> &'static AtomicBool {
+    static GEMINI_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+    static CURSOR_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+    static BEDROCK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+    match kind {
+        ExtraProviderRefreshKind::Gemini => &GEMINI_IN_FLIGHT,
+        ExtraProviderRefreshKind::Cursor => &CURSOR_IN_FLIGHT,
+        ExtraProviderRefreshKind::Bedrock => &BEDROCK_IN_FLIGHT,
+    }
+}
+
+/// Returns true if the caller wins the race and should run the refresh.
+/// Subsequent callers are no-ops until `finish_extra_provider_catalog_refresh` runs.
+pub(super) fn begin_extra_provider_catalog_refresh(kind: ExtraProviderRefreshKind) -> bool {
+    extra_provider_refresh_flag(kind)
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        )
+        .is_ok()
+}
+
+pub(super) fn finish_extra_provider_catalog_refresh(kind: ExtraProviderRefreshKind) {
+    extra_provider_refresh_flag(kind).store(false, std::sync::atomic::Ordering::Release);
 }
