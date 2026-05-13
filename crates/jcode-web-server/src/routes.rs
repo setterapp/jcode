@@ -67,7 +67,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/", get(index_html_handler))
         .route("/health", get(health_handler))
         .route("/ws", get(ws_handler))
-        .route("/api/sessions", get(list_sessions))
+        .route("/api/sessions", get(list_sessions).post(create_session))
         .route("/api/sessions/{id}", get(get_session_detail))
         .route("/api/sessions/{id}/message", post(send_message_to_session))
         .route("/api/models", get(list_models))
@@ -269,6 +269,51 @@ async fn list_sessions(
     summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     Ok(Json(summaries))
+}
+
+/// POST /api/sessions — create a new empty session.
+#[derive(serde::Deserialize)]
+struct CreateSessionPayload {
+    #[serde(default)]
+    title: Option<String>,
+}
+async fn create_session(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CreateSessionPayload>,
+) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let animal_names = ["fox", "owl", "bear", "wolf", "hawk", "deer", "seal", "crow", "dove", "swan",
+        "koala", "panda", "otter", "moth", "bug", "elk", "eel", "rat", "bat", "bee",
+        "ant", "elk", "eel", "ram", "fox", "ray", "yak", "ox", "emu", "ape"];
+    let name = animal_names[(timestamp % animal_names.len() as u128) as usize];
+    let session_id = format!("session_{}_{}", name, timestamp);
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let session = json!({
+        "id": session_id,
+        "title": payload.title.unwrap_or_default(),
+        "created_at": now,
+        "updated_at": now,
+        "messages": [],
+        "status": "Active",
+    });
+
+    let path = state.session_dir.join(format!("{}.json", session_id));
+    let json_str = match serde_json::to_string_pretty(&session) {
+        Ok(s) => s,
+        Err(e) => return Err(api_error(StatusCode::INTERNAL_SERVER_ERROR, &format!("Failed to serialize session: {}", e))),
+    };
+    if let Err(e) = std::fs::write(&path, json_str) {
+        return Err(api_error(StatusCode::INTERNAL_SERVER_ERROR, &format!("Failed to create session: {}", e)));
+    }
+
+    tracing::info!("Created new session: {}", session_id);
+    Ok(Json(session))
 }
 
 /// GET /api/sessions/{id} — get full session detail with messages.

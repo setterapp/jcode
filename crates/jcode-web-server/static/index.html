@@ -471,11 +471,20 @@ function sendMessage() {
 }
 
 // ── New session ──
-function newSession() {
-  const name = prompt('Session name (optional):');
-  if (name === null) return;
-  // TODO: create session via daemon
-  loadSessions();
+async function newSession() {
+  try {
+    const r = await fetch('/api/sessions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title: ''})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const session = await r.json();
+    await selectSession(session.id);
+    loadSessions();
+  } catch (e) {
+    console.error('Failed to create session:', e);
+  }
 }
 
 // ── Keyboard ──
