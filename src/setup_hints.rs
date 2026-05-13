@@ -130,10 +130,11 @@ fn mac_hotkey_support_dir() -> Result<PathBuf> {
 #[cfg(target_os = "macos")]
 fn mac_hotkey_launch_agent_path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Could not find home directory")?;
+    let label = format!("com.{}.hotkey.plist", crate::product::command_name());
     Ok(home
         .join("Library")
         .join("LaunchAgents")
-        .join("com.jcode.hotkey.plist"))
+        .join(label))
 }
 
 #[cfg(target_os = "macos")]
@@ -148,7 +149,10 @@ fn install_macos_hotkey_listener(
     let exe_path = exe.to_string_lossy().into_owned();
     let shell_command = paused_jcode_shell_command(&exe_path);
 
-    let launch_script_path = hotkey_dir.join("launch_jcode.sh");
+    let launch_script_path = hotkey_dir.join(format!(
+        "launch_{}.sh",
+        crate::product::command_name()
+    ));
     std::fs::write(
         &launch_script_path,
         launch_script_for_macos_terminal(terminal, &shell_command),
@@ -170,7 +174,7 @@ fn install_macos_hotkey_listener(
 <plist version=\"1.0\">
 <dict>
     <key>Label</key>
-    <string>com.jcode.hotkey</string>
+    <string>com.{product}.hotkey</string>
     <key>ProgramArguments</key>
     <array>
         <string>{exe}</string>
@@ -194,6 +198,7 @@ fn install_macos_hotkey_listener(
 </plist>
 "#,
         exe = exe_path,
+        product = crate::product::command_name(),
         stdout_path = hotkey_dir.join("mac_hotkey.out.log").display(),
         stderr_path = hotkey_dir.join("mac_hotkey.err.log").display(),
         terminal = terminal.cli_value(),
@@ -208,7 +213,7 @@ fn install_macos_hotkey_listener(
     let status = std::process::Command::new("launchctl")
         .args(["load", "-w", plist_path.to_string_lossy().as_ref()])
         .status()
-        .context("failed to load jcode LaunchAgent")?;
+        .context("failed to load LaunchAgent")?;
     if !status.success() {
         anyhow::bail!("launchctl load failed with exit code {:?}", status.code());
     }
@@ -222,7 +227,8 @@ fn startup_hints_for_launch(state: &SetupHintsState) -> Option<StartupHints> {
         None
     } else {
         Some(format!(
-            "Press Alt+; from anywhere to open jcode in {}.",
+            "Press Alt+; from anywhere to open {} in {}.",
+            crate::product::command_name(),
             effective_macos_terminal().label()
         ))
     };
@@ -230,7 +236,10 @@ fn startup_hints_for_launch(state: &SetupHintsState) -> Option<StartupHints> {
     let spawn_notice: Option<String> = None;
 
     if state.launch_count == 1 {
-        let mut message = "Tip: jcode is left-aligned by default. Use `/alignment centered` or press `Alt+C` to toggle left/centered for the current session.".to_string();
+        let mut message = format!(
+            "Tip: {} is left-aligned by default. Use `/alignment centered` or press `Alt+C` to toggle left/centered for the current session.",
+            crate::product::command_name()
+        );
 
         if let Some(spawn_notice) = spawn_notice {
             message.push_str("\n\n");
@@ -247,7 +256,7 @@ fn startup_hints_for_launch(state: &SetupHintsState) -> Option<StartupHints> {
     if state.launch_count <= 3 {
         let config_path = crate::config::Config::path()
             .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "~/.jcode/config.toml".to_string());
+            .unwrap_or_else(|| format!("~/{}/config.toml", crate::storage::product_flavor().home_dir_name()));
 
         let mut message = format!(
             "You can hotswap text alignment with `Alt+C` (left-aligned ↔ centered).\n\nTo save it permanently, use `/alignment centered` or `/alignment left`. You can also change it in `{}` with `display.centered = true` or `display.centered = false`.\n\nLeft-aligned mode is the default for new configs.",
@@ -280,8 +289,9 @@ fn read_choice() -> String {
 #[cfg(target_os = "macos")]
 fn macos_guided_ghostty_message(current_terminal: MacTerminalKind) -> String {
     format!(
-        "I want to upgrade my macOS terminal setup for jcode. Please guide me step-by-step, wait for confirmation between steps, and keep each step concise.\n\nCurrent terminal: {}\nGoal: install Ghostty and use it for jcode.\n\nPlease help me with:\n1) Detecting if Homebrew is installed (and installing it if missing)\n2) Installing Ghostty\n3) Launching Ghostty and setting it as my preferred terminal for jcode\n4) Optional: adding a macOS keyboard shortcut/launcher flow for jcode\n5) Verifying jcode runs in Ghostty and that inline images/graphics work\n\nAssume I am not an expert; provide exact commands and where to click in macOS settings when needed.",
-        current_terminal.label()
+        "I want to upgrade my macOS terminal setup for {product}. Please guide me step-by-step, wait for confirmation between steps, and keep each step concise.\n\nCurrent terminal: {terminal}\nGoal: install Ghostty and use it for {product}.\n\nPlease help me with:\n1) Detecting if Homebrew is installed (and installing it if missing)\n2) Installing Ghostty\n3) Launching Ghostty and setting it as my preferred terminal for {product}\n4) Optional: adding a macOS keyboard shortcut/launcher flow for {product}\n5) Verifying {product} runs in Ghostty and that inline images/graphics work\n\nAssume I am not an expert; provide exact commands and where to click in macOS settings when needed.",
+        product = crate::product::command_name(),
+        terminal = current_terminal.label()
     )
 }
 
@@ -300,7 +310,8 @@ fn nudge_macos_ghostty(state: &mut SetupHintsState) -> Option<String> {
 
     eprintln!("\x1b[36m┌─────────────────────────────────────────────────────────────┐\x1b[0m");
     eprintln!(
-        "\x1b[36m│\x1b[0m \x1b[1m💡 Better macOS terminal for jcode: Ghostty\x1b[0m                \x1b[36m│\x1b[0m"
+        "\x1b[36m│\x1b[0m \x1b[1m💡 Better macOS terminal for {}: Ghostty\x1b[0m                \x1b[36m│\x1b[0m",
+        crate::product::command_name()
     );
     eprintln!(
         "\x1b[36m│\x1b[0m                                                             \x1b[36m│\x1b[0m"
@@ -315,14 +326,16 @@ fn nudge_macos_ghostty(state: &mut SetupHintsState) -> Option<String> {
         );
     } else {
         eprintln!(
-            "\x1b[36m│\x1b[0m    Ghostty offers fast rendering and great jcode UX.         \x1b[36m│\x1b[0m"
+            "\x1b[36m│\x1b[0m    Ghostty offers fast rendering and great {} UX.         \x1b[36m│\x1b[0m",
+            crate::product::command_name()
         );
     }
     eprintln!(
         "\x1b[36m│\x1b[0m                                                             \x1b[36m│\x1b[0m"
     );
     eprintln!(
-        "\x1b[36m│\x1b[0m    Let jcode guide you through setup right now?             \x1b[36m│\x1b[0m"
+        "\x1b[36m│\x1b[0m    Let {} guide you through setup right now?             \x1b[36m│\x1b[0m",
+        crate::product::command_name()
     );
     eprintln!(
         "\x1b[36m│\x1b[0m    \x1b[32m[y]\x1b[0m Yes      \x1b[90m[n]\x1b[0m Not now      \x1b[90m[d]\x1b[0m Don't ask again    \x1b[36m│\x1b[0m"
@@ -360,10 +373,16 @@ pub fn run_setup_hotkey(_listen_macos_hotkey: bool) -> Result<()> {
 
         let mut state = SetupHintsState::load();
         let terminal = effective_macos_terminal();
-        eprintln!("\x1b[1mjcode setup-hotkey\x1b[0m");
+        eprintln!(
+            "\x1b[1m{} setup-hotkey\x1b[0m",
+            crate::product::command_name()
+        );
         eprintln!();
         eprintln!("  Preferred terminal: {}", terminal.label());
-        eprintln!("  Installing a LaunchAgent so Alt+; opens jcode from anywhere.");
+        eprintln!(
+            "  Installing a LaunchAgent so Alt+; opens {} from anywhere.",
+            crate::product::command_name()
+        );
         eprintln!();
 
         match install_macos_hotkey_listener(Some(terminal)) {
@@ -372,12 +391,14 @@ pub fn run_setup_hotkey(_listen_macos_hotkey: bool) -> Result<()> {
                 state.hotkey_dismissed = true;
                 let _ = state.save();
                 eprintln!(
-                    "  \x1b[32m✓\x1b[0m Created hotkey (\x1b[1mAlt+;\x1b[0m) → {} + jcode",
-                    installed_terminal.label()
+                    "  \x1b[32m✓\x1b[0m Created hotkey (\x1b[1mAlt+;\x1b[0m) → {} + {}",
+                    installed_terminal.label(),
+                    crate::product::command_name()
                 );
                 eprintln!();
                 eprintln!(
-                    "  Press \x1b[1mAlt+;\x1b[0m from anywhere to open jcode in {}.",
+                    "  Press \x1b[1mAlt+;\x1b[0m from anywhere to open {} in {}.",
+                    crate::product::command_name(),
                     installed_terminal.label()
                 );
                 return Ok(());
@@ -506,7 +527,10 @@ pub fn run_setup_launcher() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         let mut state = SetupHintsState::load();
-        eprintln!("\x1b[1mjcode setup-launcher\x1b[0m");
+        eprintln!(
+            "\x1b[1m{} setup-launcher\x1b[0m",
+            crate::product::command_name()
+        );
         eprintln!();
 
         match install_macos_app_launcher() {
@@ -518,7 +542,8 @@ pub fn run_setup_launcher() -> Result<()> {
                     app_dir.display()
                 );
                 eprintln!(
-                    "  \x1b[32m✓\x1b[0m Spotlight/Launchpad/Dock will launch jcode in {}",
+                    "  \x1b[32m✓\x1b[0m Spotlight/Launchpad/Dock will launch {} in {}",
+                    crate::product::command_name(),
                     terminal.label()
                 );
                 eprintln!();
