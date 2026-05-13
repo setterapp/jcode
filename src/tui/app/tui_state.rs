@@ -384,6 +384,7 @@ impl crate::tui::TuiState for App {
         self.status_detail
             .clone()
             .or_else(|| self.client_core_state.session_meta.status_detail.clone())
+            .or_else(|| self.client_core_state.session_meta.connection_phase.clone())
     }
 
     fn mcp_servers(&self) -> Vec<(String, usize)> {

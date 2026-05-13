@@ -697,6 +697,29 @@ impl App {
             cache_read_input_tokens: self.streaming_cache_read_tokens,
             cache_creation_input_tokens: self.streaming_cache_creation_tokens,
             queued_messages: self.queued_messages.clone(),
+            client_core_provider_name: self.client_core_state.session_meta.provider_name.clone(),
+            client_core_provider_model: self.client_core_state.session_meta.provider_model.clone(),
+            client_core_connection_type: self
+                .client_core_state
+                .session_meta
+                .connection_type
+                .clone(),
+            client_core_connection_phase: self
+                .client_core_state
+                .session_meta
+                .connection_phase
+                .clone(),
+            client_core_status_detail: self.client_core_state.session_meta.status_detail.clone(),
+            client_core_upstream_provider: self
+                .client_core_state
+                .session_meta
+                .upstream_provider
+                .clone(),
+            client_core_pending_stdin_request_id: self
+                .client_core_state
+                .pending_stdin_request
+                .as_ref()
+                .map(|pending| pending.request_id.clone()),
         }
     }
 

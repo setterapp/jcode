@@ -42,6 +42,13 @@ pub enum DebugEvent {
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
         queued_messages: Vec<String>,
+        client_core_provider_name: Option<String>,
+        client_core_provider_model: Option<String>,
+        client_core_connection_type: Option<String>,
+        client_core_connection_phase: Option<String>,
+        client_core_status_detail: Option<String>,
+        client_core_upstream_provider: Option<String>,
+        client_core_pending_stdin_request_id: Option<String>,
     },
 
     /// Text delta appended to streaming_text
