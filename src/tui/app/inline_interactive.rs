@@ -1324,7 +1324,7 @@ impl App {
         }
     }
 
-    pub(super) fn open_session_picker(&mut self) {
+    pub(crate) fn open_session_picker(&mut self) {
         let picker = SessionPicker::loading();
         self.session_picker_overlay = Some(RefCell::new(picker));
         self.session_picker_mode = SessionPickerMode::Resume;
