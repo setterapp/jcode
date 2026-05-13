@@ -1303,14 +1303,19 @@ pub(in crate::tui::app) fn handle_server_event(
                 Err(e) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "{} session **{}** was created but failed to open a window: {}\n\nResume manually: `jcode --resume {}`",
-                            label, new_session_name, e, new_session_id,
+                            "{} session **{}** was created but failed to open a window: {}\n\nResume manually: `{}`",
+                            label,
+                            new_session_name,
+                            e,
+                            crate::product::command_with(&format!("--resume {}", new_session_id))
                         )));
                         app.set_status_notice(format!("{} open failed", label));
                     } else {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "Split created **{}** but failed to open window: {}\n\nResume manually: `jcode --resume {}`",
-                            new_session_name, e, new_session_id,
+                            "Split created **{}** but failed to open window: {}\n\nResume manually: `{}`",
+                            new_session_name,
+                            e,
+                            crate::product::command_with(&format!("--resume {}", new_session_id))
                         )));
                     }
                 }
@@ -1329,8 +1334,23 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             false
         }
-        ServerEvent::StdinRequest { .. } => {
-            app.set_status_notice("⌨ Interactive terminal detected (command will timeout)");
+        ServerEvent::StdinRequest {
+            prompt,
+            is_password,
+            tool_call_id,
+            ..
+        } => {
+            let prompt_preview = prompt.trim();
+            let prompt_preview = if prompt_preview.is_empty() {
+                "(no prompt text)"
+            } else {
+                prompt_preview
+            };
+            let input_kind = if is_password { "password" } else { "text" };
+            app.status_detail = Some(format!(
+                "stdin request ({input_kind}) from tool {tool_call_id}: {prompt_preview}"
+            ));
+            app.set_status_notice("⌨ Waiting for stdin input from a running tool");
             false
         }
         _ => false,
