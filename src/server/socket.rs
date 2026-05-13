@@ -313,7 +313,10 @@ pub(super) fn take_server_start_stderr(child: &mut std::process::Child) -> Strin
 
 #[cfg(unix)]
 pub(super) fn server_start_matches_existing_server(stderr_output: &str) -> bool {
-    stderr_output.contains("Another jcode server process is already running")
+    stderr_output.contains(&format!(
+        "Another {} server process is already running",
+        crate::product::command_name()
+    ))
         || stderr_output.contains("Refusing to replace active server socket")
 }
 
@@ -335,8 +338,11 @@ pub(super) fn format_server_start_error(
 ) -> String {
     if stderr_output.trim().is_empty() {
         format!(
-            "Server exited before signalling ready ({}). Check logs at ~/.jcode/logs/",
-            status
+            "Server exited before signalling ready ({}). Check logs at {}/logs/",
+            status,
+            crate::storage::jcode_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "~/.jcode".to_string())
         )
     } else {
         format!(
