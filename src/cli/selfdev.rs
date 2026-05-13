@@ -40,7 +40,7 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
     crate::env::set_var(CLIENT_SELFDEV_ENV, "1");
 
     let repo_dir =
-        build::get_repo_dir().ok_or_else(|| anyhow::anyhow!("Could not find jcode repository"))?;
+        build::get_repo_dir().ok_or_else(|| anyhow::anyhow!("Could not find repository"))?;
 
     startup_profile::mark("selfdev_session_create");
     let is_resume = resume_session.is_some();
@@ -80,10 +80,12 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
         .unwrap_or_else(|| build::release_binary_path(&repo_dir));
 
     if !target_binary.exists() {
+        let build_cmd = crate::product::command_with("self-dev --build");
         anyhow::bail!(
             "No binary found at {:?}\n\
-             Run 'jcode self-dev --build' first, or build with '{}' and then publish current.",
+             Run '{}' first, or build with '{}' and then publish current.",
             target_binary,
+            build_cmd,
             build::selfdev_build_command(&repo_dir).display,
         );
     }

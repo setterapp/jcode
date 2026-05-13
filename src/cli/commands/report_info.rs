@@ -336,8 +336,9 @@ async fn run_auth_doctor_validation(
         Ok(Ok(())) => "validation passed".to_string(),
         Ok(Err(err)) => err.to_string(),
         Err(_) => format!(
-            "validation timed out after {}s; run `jcode auth-test --provider {}` for detailed output",
-            AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS, provider.id
+            "validation timed out after {}s; run `{}` for detailed output",
+            AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS,
+            crate::product::command_with(&format!("auth-test --provider {}", provider.id))
         ),
     }
 }
@@ -448,8 +449,14 @@ pub(super) async fn run_usage_command(emit_json: bool) -> Result<()> {
         println!("No connected providers");
         println!();
         println!("Next steps:");
-        println!("- Use `jcode login --provider claude` to connect Claude OAuth.");
-        println!("- Use `jcode login --provider openai` to connect ChatGPT / Codex OAuth.");
+        println!(
+            "- Use `{}` to connect Claude OAuth.",
+            crate::product::command_with("login --provider claude")
+        );
+        println!(
+            "- Use `{}` to connect ChatGPT / Codex OAuth.",
+            crate::product::command_with("login --provider openai")
+        );
         return Ok(());
     }
 
@@ -508,8 +515,9 @@ fn select_auth_doctor_providers(
         let provider =
             crate::provider_catalog::resolve_login_provider(provider_arg).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Unknown provider '{}'. Use `jcode provider list` to see valid provider ids.",
-                    provider_arg
+                    "Unknown provider '{}'. Use `{}` to see valid provider ids.",
+                    provider_arg,
+                    crate::product::command_with("provider list")
                 )
             })?;
         return Ok(vec![provider]);

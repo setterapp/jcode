@@ -169,15 +169,21 @@ pub async fn run_login(
     match choice {
         ProviderChoice::Auto => {
             if options.uses_scriptable_flow()? {
+                let login_cmd = crate::product::command_with("login --provider <provider> ...");
                 anyhow::bail!(
-                    "Scriptable login flags require an explicit provider. Use `jcode login --provider <provider> ...`."
+                    "Scriptable login flags require an explicit provider. Use `{}`.",
+                    login_cmd
                 );
             }
             crate::telemetry::record_setup_step_once("login_picker_opened");
             let providers = crate::provider_catalog::cli_login_providers();
             if !io::stdin().is_terminal() {
+                let auto_cmd = crate::product::command_with("login --provider auto");
+                let provider_cmd = crate::product::command_with("login --provider <provider>");
                 anyhow::bail!(
-                    "`jcode login --provider auto` requires an interactive terminal. Use `jcode login --provider <provider>` in non-interactive mode."
+                    "`{}` requires an interactive terminal. Use `{}` in non-interactive mode.",
+                    auto_cmd,
+                    provider_cmd
                 );
             }
             if let Some(imported) =
@@ -383,9 +389,11 @@ async fn notify_running_server_auth_changed_best_effort() {
 }
 
 fn login_jcode_flow() -> Result<()> {
+    let product_name = crate::product::command_name();
     eprintln!("Setting up Jcode subscription access...");
     eprintln!(
-        "Paste the jcode subscription API key from your account portal. This key is used for your curated jcode router access.\n"
+        "Paste the {} subscription API key from your account portal. This key is used for your curated {} router access.\n",
+        product_name, product_name
     );
     eprint!("Paste your Jcode API key: ");
     io::stdout().flush()?;
@@ -588,7 +596,8 @@ fn login_azure_flow() -> Result<()> {
 
     eprintln!("Setting up Azure OpenAI...");
     eprintln!(
-        "Reference: OpenCode supports Azure OpenAI with Entra credentials. jcode uses Azure OpenAI's newer `/openai/v1` API with either Microsoft Entra ID or an API key.\n"
+        "Reference: OpenCode supports Azure OpenAI with Entra credentials. {} uses Azure OpenAI's newer `/openai/v1` API with either Microsoft Entra ID or an API key.\n",
+        crate::product::command_name()
     );
 
     let endpoint_raw = read_line_trimmed(
@@ -633,7 +642,8 @@ fn login_azure_flow() -> Result<()> {
         eprintln!();
         eprintln!("Using Microsoft Entra ID via Azure's DefaultAzureCredential chain.");
         eprintln!(
-            "That means jcode can authenticate via `az login`, managed identity, or Azure environment credentials."
+            "That means {} can authenticate via `az login`, managed identity, or Azure environment credentials.",
+            crate::product::command_name()
         );
     } else {
         eprint!("Paste your Azure OpenAI API key: ");
@@ -938,7 +948,10 @@ fn login_cursor_flow() -> Result<()> {
             .join("cursor.env")
             .display()
     );
-    eprintln!("jcode will use the native Cursor HTTPS transport.");
+    eprintln!(
+        "{} will use the native Cursor HTTPS transport.",
+        crate::product::command_name()
+    );
     crate::telemetry::record_auth_success("cursor", "api_key");
     Ok(())
 }
@@ -995,10 +1008,12 @@ async fn login_copilot_device_flow(no_browser: bool) -> Result<()> {
 async fn login_antigravity_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting native Antigravity login...");
     eprintln!(
-        "jcode will authenticate directly with Google Antigravity; the Antigravity desktop app is not required."
+        "{} will authenticate directly with Google Antigravity; the Antigravity desktop app is not required.",
+        crate::product::command_name()
     );
     eprintln!(
-        "If browser launch fails, or you pass `--no-browser`, jcode will prompt for the callback URL instead."
+        "If browser launch fails, or you pass `--no-browser`, {} will prompt for the callback URL instead.",
+        crate::product::command_name()
     );
     eprintln!(
         "If the browser later shows a loopback/callback error page, copy the full URL from the address bar and re-run with `--no-browser`."
@@ -1028,7 +1043,8 @@ async fn login_gemini_flow(no_browser: bool) -> Result<()> {
         "If your student/education plan is attached to your Google account, use that account in the browser flow."
     );
     eprintln!(
-        "If browser launch fails, or you pass `--no-browser`, jcode will prompt for the manual authorization code."
+        "If browser launch fails, or you pass `--no-browser`, {} will prompt for the manual authorization code.",
+        crate::product::command_name()
     );
     eprintln!(
         "Note: school / Workspace Google accounts may also require GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION for Code Assist entitlement checks."
@@ -1181,7 +1197,10 @@ async fn login_google_flow(no_browser: bool) -> Result<()> {
                         no_browser,
                     );
                     eprintln!("   - Choose 'External' user type");
-                    eprintln!("   - Fill in app name (e.g. 'jcode') and your email");
+                    eprintln!(
+                        "   - Fill in app name (e.g. '{}') and your email",
+                        crate::product::command_name()
+                    );
                     eprintln!("   - Skip scopes (we'll request them during login)");
                     eprintln!("   - Add your email as a test user");
                     eprintln!("   - Save and continue through all steps");
@@ -1197,7 +1216,7 @@ async fn login_google_flow(no_browser: bool) -> Result<()> {
                     );
                     eprintln!("   - Click '+ Create Credentials' > 'OAuth client ID'");
                     eprintln!("   - Application type: 'Desktop app'");
-                    eprintln!("   - Name: 'jcode'");
+                    eprintln!("   - Name: '{}'", crate::product::command_name());
                     eprintln!("   - Click 'Create'\n");
                     eprintln!("   A dialog will show your Client ID and Client Secret.\n");
 
