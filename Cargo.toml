@@ -58,6 +58,13 @@ members = [
     "crates/jcode-mobile-core",
     "crates/jcode-mobile-sim",
     "crates/jcode-desktop",
+    "crates/jcode-mcp-core",
+    "crates/jcode-web-server",
+    "crates/jcode-plugin-core",
+    "crates/jcode-tui-dialogs",
+    "crates/jcode-tui-sidebar",
+    "crates/jcode-tui-command-palette",
+    "crates/jcode-tool-web",
 ]
 
 [lib]
@@ -169,6 +176,13 @@ jcode-update-core = { path = "crates/jcode-update-core" }
 jcode-terminal-launch = { path = "crates/jcode-terminal-launch" }
 jcode-tui-workspace = { path = "crates/jcode-tui-workspace" }
 jcode-usage-types = { path = "crates/jcode-usage-types" }
+jcode-mcp-core = { path = "crates/jcode-mcp-core" }
+jcode-web-server = { path = "crates/jcode-web-server" }
+jcode-plugin-core = { path = "crates/jcode-plugin-core" }
+jcode-tui-dialogs = { path = "crates/jcode-tui-dialogs" }
+jcode-tui-sidebar = { path = "crates/jcode-tui-sidebar" }
+jcode-tui-command-palette = { path = "crates/jcode-tui-command-palette" }
+jcode-tool-web = { path = "crates/jcode-tool-web" }
 
 # Streaming
 tokio-stream = "0.1"

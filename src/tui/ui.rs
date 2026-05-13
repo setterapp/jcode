@@ -1683,6 +1683,39 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         return;
     }
 
+    if let Some(palette_cell) = app.command_palette_overlay() {
+        let area = frame.area();
+        let mut palette = palette_cell.borrow_mut();
+        palette.render(frame, area);
+        finalize_frame_metrics(
+            app,
+            total_start,
+            Duration::ZERO,
+            total_start.elapsed(),
+            None,
+        );
+        return;
+    }
+
+    // Sidebar: if visible, split off left panel and render it
+    let sidebar_width = app.sidebar().width();
+    let (sidebar_area, main_area) = if sidebar_width > 0 {
+        let chunks = ratatui::layout::Layout::horizontal([
+            ratatui::layout::Constraint::Length(sidebar_width),
+            ratatui::layout::Constraint::Fill(1),
+        ])
+        .split(area);
+        (chunks[0], chunks[1])
+    } else {
+        (Rect::default(), area)
+    };
+    let area = main_area;
+
+    // Render sidebar first (behind everything else)
+    if sidebar_width > 0 {
+        app.sidebar().render(frame, sidebar_area);
+    }
+
     // Initialize visual debug capture if enabled
     let mut debug_capture = if visual_debug::is_enabled() {
         Some(FrameCaptureBuilder::new(area.width, area.height))
@@ -1880,10 +1913,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let provider_strip_height: u16 = 1; // always-visible provider auth/status strip
     // Inline usage strip (5h/Weekly bars) shown below the input, replacing the floating widget.
     let widget_data = app.info_widget_data();
-    // Show the inline usage strip whenever the provider has time-windowed limits
-    // (Anthropic/OpenAI OAuth), regardless of whether `available` is true yet.
-    // CostBased/Copilot also show if available (they display cost/tokens instead).
+    // Show the inline usage strip only when there is no custom [status_line] script.
+    // When the bash script is active it already renders 5h/Weekly on the same line,
+    // so showing a second dedicated row would create an unwanted two-line layout.
+    let status_line_active = crate::config::config().status_line.is_active();
     let usage_strip_height: u16 = if !show_donut
+        && !status_line_active
         && widget_data.usage_info.as_ref().map(|u| {
             use crate::tui::info_widget::UsageProvider;
             match u.provider {

@@ -382,6 +382,117 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: RestartCommand,
     },
+
+    // ── jcode-plus: Features ported from opencode ──
+
+    /// Manage MCP (Model Context Protocol) servers
+    #[command(subcommand)]
+    Mcp(McpCommand),
+
+    /// Manage custom agents
+    #[command(name = "agent", subcommand)]
+    AgentCmd(AgentCommand),
+
+    /// Install plugins
+    Plug {
+        /// Plugin spec (npm package, git URL, or file path)
+        spec: String,
+
+        /// Force reinstall
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Start web server for remote access
+    #[command(name = "serve-web")]
+    ServeWeb {
+        /// Port to listen on (default: 4096)
+        #[arg(long, default_value = "4096")]
+        port: u16,
+
+        /// Hostname to bind to (default: 127.0.0.1)
+        #[arg(long, default_value = "127.0.0.1")]
+        hostname: String,
+
+        /// Open browser automatically
+        #[arg(long)]
+        open: bool,
+    },
+
+    /// Start web server AND open web UI in browser
+    Web {
+        /// Port to listen on
+        #[arg(long, default_value = "4096")]
+        port: u16,
+
+        /// Hostname to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        hostname: String,
+    },
+
+    /// Export session data as JSON
+    Export {
+        /// Session ID to export (omit to list sessions)
+        session: Option<String>,
+
+        /// Sanitize sensitive data
+        #[arg(long)]
+        sanitize: bool,
+
+        /// Output file path (default: stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
+    /// Import session data from JSON file
+    Import {
+        /// Path to session JSON file or share URL
+        input: String,
+    },
+
+    /// GitHub Actions integration
+    #[command(subcommand)]
+    Github(GithubCommand),
+
+    /// Checkout a GitHub PR and run jcode-plus in interactive mode
+    Pr {
+        /// PR number
+        number: String,
+    },
+
+    /// Show token/cost analytics
+    Stats {
+        /// Emit JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Full uninstall
+    Uninstall {
+        /// Skip confirmation prompts
+        #[arg(long)]
+        force: bool,
+
+        /// Show what would be deleted without actually deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// SQLite REPL or query
+    Db {
+        /// Optional SQL query to run
+        query: Option<String>,
+
+        /// Output format
+        #[arg(long, default_value = "table")]
+        format: String,
+    },
+
+    /// Generate shell completion script
+    Completion {
+        /// Shell type (bash, zsh, fish, powershell, elvish)
+        shell: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -609,6 +720,67 @@ pub(crate) enum MemoryCommand {
 
     /// Clear test memory storage (used by debug sessions)
     ClearTest,
+}
+
+// ── jcode-plus: New subcommand enums ──
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum McpCommand {
+    /// List all configured MCP servers and their tool counts
+    List,
+    /// List all configured MCP servers (alias)
+    Ls,
+    /// Add an MCP server
+    Add {
+        /// Server name
+        name: String,
+
+        /// Command to run (for stdio transport)
+        #[arg(long)]
+        command: Option<String>,
+
+        /// Args for the command
+        #[arg(long)]
+        args: Vec<String>,
+
+        /// SSE URL (for sse transport)
+        #[arg(long)]
+        url: Option<String>,
+    },
+    /// Show OAuth status for an MCP server
+    Auth {
+        /// Server name
+        name: Option<String>,
+    },
+    /// Logout from an MCP server's OAuth
+    Logout {
+        /// Server name
+        name: String,
+    },
+    /// Debug an MCP server connection
+    Debug {
+        /// Server name
+        name: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum AgentCommand {
+    /// Create a new custom agent via LLM
+    Create {
+        /// Name for the new agent
+        name: Option<String>,
+    },
+    /// List all available custom agents
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum GithubCommand {
+    /// Install GitHub Actions integration
+    Install,
+    /// Run as a GitHub Action
+    Run,
 }
 
 #[cfg(test)]

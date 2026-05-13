@@ -403,6 +403,17 @@ impl crate::tui::TuiState for TestState {
     ) -> Option<&std::cell::RefCell<crate::tui::usage_overlay::UsageOverlay>> {
         None
     }
+    fn command_palette_overlay(
+        &self,
+    ) -> Option<&std::cell::RefCell<jcode_tui_command_palette::CommandPalette>> {
+        None
+    }
+    fn sidebar(&self) -> &jcode_tui_sidebar::Sidebar {
+        panic!("sidebar not available in tests")
+    }
+    fn sidebar_mut(&mut self) -> &mut jcode_tui_sidebar::Sidebar {
+        panic!("sidebar not available in tests")
+    }
     fn working_dir(&self) -> Option<String> {
         None
     }

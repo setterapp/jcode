@@ -1,7 +1,8 @@
 # jcode-plus: jcode backend + opencode UI — Integration Plan
 
-Status: Planning
+Status: In Progress (Phase 1+2+4 complete)
 Created: 2026-05-13 11:17
+Updated: 2026-05-13 (web UI, command palette, export/import, daemon integration complete)
 
 ## Goal
 
@@ -238,11 +239,14 @@ The most maintainable path is building the opencode UX inside jcode as a new TUI
 
 ## Success Metrics
 
-- [ ] `jcode --continue` opens polished TUI with session picker
-- [ ] `/model deepseek-v4-pro` switches model mid-session
-- [ ] `jcode session list` shows all sessions with previews
-- [ ] `jcode web` opens web interface with full session management
-- [ ] Command palette (`Cmd+K`) fuzzy-searches all actions
+- [x] `jcode web` opens web interface with full session management + real-time chat via WebSocket
+- [x] Command palette (`Alt+K`) shows all models dynamically + fuzzy search
+- [x] Model switching works from command palette
+- [x] Session picker (`Alt+S`) opens from command palette
+- [x] `jcode export` exports real session data with sanitization
+- [x] `jcode import` reads and saves sessions from file/URL
+- [ ] `jcode --continue` opens polished TUI with session picker (already works, needs polish)
+- [ ] Command palette shows recent sessions for quick resume
 - [ ] Session scrolling is 60fps (virtualized rendering)
 - [ ] Memory usage < 200MB idle
 - [ ] Startup time < 200ms cold, < 50ms warm

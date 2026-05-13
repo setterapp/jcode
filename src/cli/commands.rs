@@ -13,6 +13,16 @@ use super::terminal::{cleanup_tui_runtime, init_tui_runtime};
 mod provider_setup;
 mod report_info;
 mod restart;
+mod mcp_cmd;
+mod agent_cmd;
+mod plugin_cmd;
+mod serve_web_cmd;
+mod export_cmd;
+mod github_cmd;
+mod stats_cmd;
+mod uninstall_cmd;
+mod completion_cmd;
+mod db_cmd;
 
 pub use super::auth_test::run_auth_test_command;
 pub(crate) use super::auth_test::run_post_login_validation;
@@ -26,6 +36,18 @@ pub use restart::{
     maybe_run_pending_restart_restore_on_startup, run_restart_clear_command,
     run_restart_restore_command, run_restart_save_command, run_restart_status_command,
 };
+pub use mcp_cmd::{
+    run_mcp_add, run_mcp_auth, run_mcp_debug, run_mcp_list, run_mcp_logout,
+};
+pub use agent_cmd::{run_agent_create, run_agent_list};
+pub use plugin_cmd::{run_plugin_install, run_plugin_list};
+pub use serve_web_cmd::{run_serve, run_web};
+pub use export_cmd::{run_export, run_import};
+pub use github_cmd::{run_github_install, run_github_run, run_pr};
+pub use stats_cmd::run_stats;
+pub use uninstall_cmd::run_uninstall;
+pub use completion_cmd::run_completion;
+pub use db_cmd::run_db;
 
 pub enum AmbientSubcommand {
     Status,

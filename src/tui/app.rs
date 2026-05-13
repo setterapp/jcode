@@ -970,6 +970,10 @@ pub struct App {
     account_picker_overlay: Option<RefCell<super::account_picker::AccountPicker>>,
     /// Usage overlay (None = not visible)
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
+    /// Command palette overlay (None = not visible)
+    command_palette: Option<RefCell<jcode_tui_command_palette::CommandPalette>>,
+    /// Navigation sidebar
+    sidebar: jcode_tui_sidebar::Sidebar,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
     /// When true, usage reports update the inline strip only — no chat card is inserted.

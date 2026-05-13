@@ -7,7 +7,7 @@
 mod client;
 mod manager;
 pub mod pool;
-mod protocol;
+pub mod protocol;
 mod tool;
 
 pub use client::{McpClient, McpHandle};

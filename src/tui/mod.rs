@@ -287,6 +287,11 @@ pub trait TuiState {
     fn account_picker_overlay(&self) -> Option<&std::cell::RefCell<account_picker::AccountPicker>>;
     /// Usage overlay for /usage command
     fn usage_overlay(&self) -> Option<&std::cell::RefCell<usage_overlay::UsageOverlay>>;
+    /// Command palette overlay (None = not visible)
+    fn command_palette_overlay(&self) -> Option<&std::cell::RefCell<jcode_tui_command_palette::CommandPalette>>;
+    /// Navigation sidebar
+    fn sidebar(&self) -> &jcode_tui_sidebar::Sidebar;
+    fn sidebar_mut(&mut self) -> &mut jcode_tui_sidebar::Sidebar;
     /// Working directory for this session
     fn working_dir(&self) -> Option<String>;
     /// Monotonic clock for viewport animations

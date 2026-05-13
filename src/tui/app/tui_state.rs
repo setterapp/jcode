@@ -1212,6 +1212,20 @@ impl crate::tui::TuiState for App {
         self.usage_overlay.as_ref()
     }
 
+    fn command_palette_overlay(
+        &self,
+    ) -> Option<&RefCell<jcode_tui_command_palette::CommandPalette>> {
+        self.command_palette.as_ref()
+    }
+
+    fn sidebar(&self) -> &jcode_tui_sidebar::Sidebar {
+        &self.sidebar
+    }
+
+    fn sidebar_mut(&mut self) -> &mut jcode_tui_sidebar::Sidebar {
+        &mut self.sidebar
+    }
+
     fn working_dir(&self) -> Option<String> {
         self.session.working_dir.clone()
     }

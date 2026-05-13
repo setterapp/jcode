@@ -1098,6 +1098,15 @@ pub(super) fn handle_pre_control_shortcuts(
             // Populate dynamic model entries from provider
             let models = app.provider.available_models_for_switching();
             palette.set_models(models);
+            // Populate recent sessions for quick resume
+            if let Ok(all_sessions) = super::super::session_picker::load_sessions() {
+                let recent: Vec<(String, String)> = all_sessions
+                    .into_iter()
+                    .take(20)
+                    .map(|s| (s.id.clone(), s.title.clone()))
+                    .collect();
+                palette.set_sessions(recent);
+            }
             app.command_palette = Some(std::cell::RefCell::new(palette));
         }
         return true;

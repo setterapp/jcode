@@ -5,8 +5,8 @@ use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
-    RestartCommand, SessionCommand, TranscriptModeArg,
+    AgentCommand, AmbientCommand, Args, AuthCommand, Command, GithubCommand, MemoryCommand,
+    McpCommand, ModelCommand, ProviderCommand, RestartCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
@@ -311,6 +311,54 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             RestartCommand::Status => commands::run_restart_status_command()?,
             RestartCommand::Clear => commands::run_restart_clear_command()?,
         },
+
+        // ── jcode-plus commands ──
+
+        Some(Command::Mcp(subcmd)) => match subcmd {
+            McpCommand::List | McpCommand::Ls => commands::run_mcp_list().await?,
+            McpCommand::Add {
+                name,
+                command,
+                args,
+                url,
+            } => commands::run_mcp_add(&name, command, &args, url).await?,
+            McpCommand::Auth { name } => commands::run_mcp_auth(name).await?,
+            McpCommand::Logout { name } => commands::run_mcp_logout(&name).await?,
+            McpCommand::Debug { name } => commands::run_mcp_debug(&name).await?,
+        },
+        Some(Command::AgentCmd(subcmd)) => match subcmd {
+            AgentCommand::Create { name } => commands::run_agent_create(name).await?,
+            AgentCommand::List => commands::run_agent_list().await?,
+        },
+        Some(Command::Plug { spec, force }) => {
+            commands::run_plugin_install(&spec, force).await?
+        }
+        Some(Command::ServeWeb {
+            port,
+            hostname,
+            open,
+        }) => commands::run_serve(port, &hostname, open).await?,
+        Some(Command::Web { port, hostname }) => {
+            commands::run_web(port, &hostname).await?
+        }
+        Some(Command::Export {
+            session,
+            sanitize,
+            output,
+        }) => commands::run_export(session, sanitize, output).await?,
+        Some(Command::Import { input }) => commands::run_import(&input).await?,
+        Some(Command::Github(subcmd)) => match subcmd {
+            GithubCommand::Install => commands::run_github_install().await?,
+            GithubCommand::Run => commands::run_github_run().await?,
+        },
+        Some(Command::Pr { number }) => commands::run_pr(&number).await?,
+        Some(Command::Stats { json }) => commands::run_stats(json)?,
+        Some(Command::Uninstall { force, dry_run }) => {
+            commands::run_uninstall(force, dry_run)?
+        }
+        Some(Command::Db { query, format }) => commands::run_db(query, &format)?,
+        Some(Command::Completion { shell }) => commands::run_completion(shell)?,
+
         None => run_default_command(args).await?,
     }
 
