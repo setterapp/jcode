@@ -1089,6 +1089,24 @@ pub(super) fn handle_pre_control_shortcuts(
         app.toggle_typing_scroll_lock();
         return true;
     }
+    // jcode-plus: Command palette (Alt+K)
+    if modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('k')) {
+        if app.command_palette.is_some() {
+            app.command_palette = None;
+        } else {
+            let mut palette = jcode_tui_command_palette::CommandPalette::new();
+            // Populate dynamic model entries from provider
+            let models = app.provider.available_models_for_switching();
+            palette.set_models(models);
+            app.command_palette = Some(std::cell::RefCell::new(palette));
+        }
+        return true;
+    }
+    // jcode-plus: Toggle sidebar (Alt+B)
+    if modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('b')) {
+        app.sidebar.toggle();
+        return true;
+    }
     if app.dictation_key_matches(code, modifiers) {
         app.handle_dictation_trigger();
         return true;
@@ -1198,6 +1216,113 @@ pub(super) fn handle_modal_key(
     if app.account_picker_overlay.is_some() {
         if let Some(command) = app.next_account_picker_action(code, modifiers)? {
             app.handle_account_picker_command(command);
+        }
+        return Ok(true);
+    }
+
+    if let Some(ref palette_cell) = app.command_palette {
+        let mut palette = palette_cell.borrow_mut();
+        let action = palette.handle_key(KeyEvent::new(code, modifiers));
+        match action {
+            Some(jcode_tui_command_palette::PaletteAction::ToggleSidebar) => {
+                drop(palette);
+                app.sidebar.toggle();
+                app.command_palette = None;
+            }
+            Some(jcode_tui_command_palette::PaletteAction::Quit) => {
+                drop(palette);
+                app.command_palette = None;
+                app.should_quit = true;
+            }
+            Some(jcode_tui_command_palette::PaletteAction::OpenSessions) => {
+                drop(palette);
+                app.command_palette = None;
+                app.open_session_picker();
+            }
+            Some(jcode_tui_command_palette::PaletteAction::OpenModels) => {
+                drop(palette);
+                app.command_palette = None;
+                // Show model list as a display message
+                let models = app.provider.available_models_for_switching();
+                let model_list = models.join(", ");
+                app.push_display_message(crate::tui::DisplayMessage::system(
+                    format!("Available models: {}", model_list),
+                ));
+                app.set_status_notice(format!("{} models available", models.len()));
+            }
+            Some(jcode_tui_command_palette::PaletteAction::SelectModel(model)) => {
+                drop(palette);
+                app.command_palette = None;
+                // Switch to the selected model
+                match app.provider.set_model(&model) {
+                    Ok(()) => {
+                        app.provider_session_id = None;
+                        app.session.provider_session_id = None;
+                        app.upstream_provider = None;
+                        app.status_detail = None;
+                        app.update_context_limit_for_model(&model);
+                        app.session.model = Some(app.provider.model());
+                        let _ = app.session.save();
+                        app.push_display_message(crate::tui::DisplayMessage::system(
+                            format!("✓ Switched to model: {}", model),
+                        ));
+                        app.set_status_notice(format!("Model → {}", model));
+                    }
+                    Err(e) => {
+                        app.push_display_message(crate::tui::DisplayMessage::error(
+                            format!("Failed to switch model: {}", e),
+                        ));
+                    }
+                }
+            }
+            Some(jcode_tui_command_palette::PaletteAction::SelectSession(session_id)) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice(format!("Select session: {}", session_id));
+                // Use the session picker infrastructure to resume
+                app.open_session_picker();
+            }
+            Some(jcode_tui_command_palette::PaletteAction::ClearChat) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Clear chat: use /clear or restart session");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::ForkSession) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Fork: use /split or Ctrl+K → split to fork from here");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::RenameSession) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Rename: use jcode session rename <id> <name>");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::StashSession) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Stash not yet available in command palette");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::OpenAgents) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Agent selection not yet supported in this mode");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::OpenMcp) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("MCP server list: run `jcode mcp list`");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::OpenSettings) => {
+                drop(palette);
+                app.command_palette = None;
+                app.set_status_notice("Settings not yet available in command palette");
+            }
+            Some(jcode_tui_command_palette::PaletteAction::ToggleDiagram) => {
+                drop(palette);
+                app.command_palette = None;
+                app.toggle_diagram_pane();
+            }
+            None => {}
         }
         return Ok(true);
     }
