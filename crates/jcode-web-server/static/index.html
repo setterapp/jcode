@@ -414,8 +414,7 @@ async function selectSession(id) {
     }
     // Resume session via daemon
     if (connected) {
-      sendWS({type: 'resume_session', id: msgId++, session_id: id, client_has_local_history: true, allow_session_takeover: false});
-      sendWS({type: 'get_history', id: msgId++});
+      sendWS({type: 'resume_session', id: msgId++, session_id: id, client_has_local_history: false, allow_session_takeover: false});
     }
   } catch (e) {
     msgs.innerHTML = `<div class="empty-state"><p style="color:var(--red)">${e.message}</p></div>`;

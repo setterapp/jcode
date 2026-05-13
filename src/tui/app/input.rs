@@ -1111,6 +1111,11 @@ pub(super) fn handle_pre_control_shortcuts(
         }
         return true;
     }
+    // jcode-plus: Direct session picker (Alt+R for Resume)
+    if modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('r')) {
+        app.open_session_picker();
+        return true;
+    }
     // jcode-plus: Toggle sidebar (Alt+B)
     if modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('b')) {
         app.sidebar.toggle();

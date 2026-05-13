@@ -246,7 +246,7 @@ The most maintainable path is building the opencode UX inside jcode as a new TUI
 - [x] `jcode export` exports real session data with sanitization
 - [x] `jcode import` reads and saves sessions from file/URL
 - [ ] `jcode --continue` opens polished TUI with session picker (already works, needs polish)
-- [ ] Command palette shows recent sessions for quick resume
+- [x] Command palette shows recent sessions for quick resume
 - [ ] Session scrolling is 60fps (virtualized rendering)
 - [ ] Memory usage < 200MB idle
 - [ ] Startup time < 200ms cold, < 50ms warm
