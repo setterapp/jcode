@@ -33,7 +33,10 @@ pub async fn run_agent_list() -> Result<()> {
 
     if agents.is_empty() {
         println!("No custom agents found.");
-        println!("  Use: jcode agent create <name>");
+        println!(
+            "  Use: {}",
+            crate::product::command_with("agent create <name>")
+        );
         return Ok(());
     }
 

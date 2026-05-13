@@ -347,6 +347,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             output,
         }) => commands::run_export(session, sanitize, output).await?,
         Some(Command::Import { input }) => commands::run_import(&input).await?,
+        Some(Command::ImportFromJcode { force }) => commands::run_import_from_jcode(force)?,
         Some(Command::Github(subcmd)) => match subcmd {
             GithubCommand::Install => commands::run_github_install().await?,
             GithubCommand::Run => commands::run_github_run().await?,

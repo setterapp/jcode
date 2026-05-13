@@ -7,7 +7,10 @@ pub async fn run_mcp_list() -> Result<()> {
 
     if config.servers.is_empty() {
         println!("No MCP servers configured.");
-        println!("  Use: jcode mcp add <name> --command <cmd> [--args ...]");
+        println!(
+            "  Use: {}",
+            crate::product::command_with("mcp add <name> --command <cmd> [--args ...]")
+        );
         return Ok(());
     }
 

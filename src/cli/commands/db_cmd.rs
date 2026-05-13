@@ -8,7 +8,10 @@ pub fn run_db(query: Option<String>, format: &str) -> Result<()> {
     } else {
         println!("SQLite REPL");
         println!("(Interactive SQLite mode not yet implemented in jcode-plus)");
-        println!("Use: jcode db \"SELECT * FROM sessions LIMIT 10\"");
+        println!(
+            "Use: {}",
+            crate::product::command_with("db \"SELECT * FROM sessions LIMIT 10\"")
+        );
     }
 
     Ok(())

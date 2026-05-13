@@ -13,10 +13,12 @@ pub(super) fn external_auth_blocked_message(
     login_hint: &str,
 ) -> String {
     format!(
-        "Found existing {} credentials from {} at {} but jcode will not read them without confirmation. Re-run in an interactive terminal to approve this auth source for future jcode sessions, or run `{}`.",
+        "Found existing {} credentials from {} at {} but {} will not read them without confirmation. Re-run in an interactive terminal to approve this auth source for future {} sessions, or run `{}`.",
         provider_name,
         source_name,
         path.display(),
+        crate::product::command_name(),
+        crate::product::command_name(),
         login_hint
     )
 }
@@ -33,9 +35,15 @@ pub(super) fn prompt_to_trust_external_auth(
         source_name,
         path.display()
     );
-    eprintln!("jcode will only read that source in place after you approve it.");
+    eprintln!(
+        "{} will only read that source in place after you approve it.",
+        crate::product::command_name()
+    );
     eprintln!("It will not move, delete, or rewrite the original auth there.");
-    eprint!("Trust this auth source for future jcode sessions? [y/N]: ");
+    eprint!(
+        "Trust this auth source for future {} sessions? [y/N]: ",
+        crate::product::command_name()
+    );
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -204,10 +212,14 @@ fn prompt_to_review_external_auth_sources(
     }
 
     eprintln!();
-    eprintln!("Found existing logins that jcode can reuse.");
+    eprintln!(
+        "Found existing logins that {} can reuse.",
+        crate::product::command_name()
+    );
     eprintln!("Nothing has been imported yet.");
     eprintln!(
-        "Approve the sources you want jcode to read in place; rejected sources stay untouched."
+        "Approve the sources you want {} to read in place; rejected sources stay untouched.",
+        crate::product::command_name()
     );
     eprintln!();
 
@@ -421,8 +433,9 @@ pub(crate) async fn maybe_run_external_auth_auto_import_flow() -> Result<Option<
 pub(crate) fn format_external_auth_review_candidates_markdown(
     candidates: &[ExternalAuthReviewCandidate],
 ) -> String {
-    let mut message = String::from(
-        "**Auto Import Existing Logins**\n\nFound existing logins that jcode can reuse. Nothing has been imported yet.\n\nReply with `a` to approve all, `1,3` to approve specific sources, or `/cancel` to abort.\n",
+    let mut message = format!(
+        "**Auto Import Existing Logins**\n\nFound existing logins that {} can reuse. Nothing has been imported yet.\n\nReply with `a` to approve all, `1,3` to approve specific sources, or `/cancel` to abort.\n",
+        crate::product::command_name(),
     );
     for (index, candidate) in candidates.iter().enumerate() {
         message.push_str(&format!(

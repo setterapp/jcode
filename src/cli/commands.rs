@@ -23,6 +23,7 @@ mod stats_cmd;
 mod uninstall_cmd;
 mod completion_cmd;
 mod db_cmd;
+mod import_from_jcode_cmd;
 
 pub use super::auth_test::run_auth_test_command;
 pub(crate) use super::auth_test::run_post_login_validation;
@@ -48,6 +49,7 @@ pub use stats_cmd::run_stats;
 pub use uninstall_cmd::run_uninstall;
 pub use completion_cmd::run_completion;
 pub use db_cmd::run_db;
+pub use import_from_jcode_cmd::run_import_from_jcode;
 
 pub enum AmbientSubcommand {
     Status,

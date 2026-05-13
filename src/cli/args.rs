@@ -449,6 +449,13 @@ pub(crate) enum Command {
         input: String,
     },
 
+    /// Import selected local state from ~/.jcode into this product namespace (opt-in migration)
+    ImportFromJcode {
+        /// Overwrite existing files in the target namespace when conflicts are found
+        #[arg(long)]
+        force: bool,
+    },
+
     /// GitHub Actions integration
     #[command(subcommand)]
     Github(GithubCommand),

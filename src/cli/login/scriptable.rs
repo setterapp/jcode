@@ -1,5 +1,9 @@
 use super::*;
 
+fn login_cmd_with(provider: &str, suffix: &str) -> String {
+    crate::product::command_with(&format!("login --provider {provider} {suffix}"))
+}
+
 pub(super) fn auto_scriptable_flow_reason(
     provider: LoginProviderDescriptor,
     options: &LoginOptions,
@@ -150,9 +154,10 @@ pub(super) async fn start_scriptable_login(
             )
         }
         LoginProviderTarget::Google => {
-            let creds = auth::google::load_credentials().context(
-                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
-            )?;
+            let creds = auth::google::load_credentials().context(format!(
+                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `{}` once or save google credentials manually.",
+                crate::product::command_with("login --provider google")
+            ))?;
             let tier = options
                 .google_access_tier
                 .unwrap_or(auth::google::GmailAccessTier::Full);
@@ -505,9 +510,10 @@ pub(super) async fn complete_scriptable_google_login(
             anyhow::bail!("Google completion requires --callback-url.")
         }
     };
-    let creds = auth::google::load_credentials().context(
-        "Google/Gmail completion requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
-    )?;
+    let creds = auth::google::load_credentials().context(format!(
+        "Google/Gmail completion requires saved OAuth credentials first. Run `{}` once or save google credentials manually.",
+        crate::product::command_with("login --provider google")
+    ))?;
     let tokens = auth::google::exchange_callback_input(
         &creds,
         &verifier,
@@ -598,9 +604,9 @@ pub(super) fn require_scriptable_input(
 pub(super) fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptableLogin> {
     if !path.exists() {
         anyhow::bail!(
-            "No pending {} login state found. Run `jcode login --provider {} --print-auth-url` first.",
+            "No pending {} login state found. Run `{}` first.",
             provider,
-            provider
+            crate::product::command_with(&format!("login --provider {} --print-auth-url", provider))
         );
     }
     crate::storage::harden_secret_file_permissions(path);
@@ -615,9 +621,12 @@ pub(super) fn load_pending_login(path: &PathBuf, provider: &str) -> Result<Pendi
         if record.expires_at_ms <= current_time_ms() {
             clear_pending_login(path);
             anyhow::bail!(
-                "Pending {} login state expired. Run `jcode login --provider {} --print-auth-url` again.",
+                "Pending {} login state expired. Run `{}` again.",
                 provider,
-                provider
+                crate::product::command_with(&format!(
+                    "login --provider {} --print-auth-url",
+                    provider
+                ))
             );
         }
         cleanup_stale_pending_login_files()?;
@@ -725,17 +734,13 @@ pub(super) fn emit_scriptable_auth_prompt(
 
 pub(super) fn scriptable_resume_command(provider: &str, input_kind: &str) -> String {
     match input_kind {
-        "callback_url" => {
-            format!(
-                "jcode login --provider {} --callback-url '<url-or-query>'",
-                provider
-            )
-        }
-        "auth_code" => format!("jcode login --provider {} --auth-code '<code>'", provider),
-        "complete" => format!("jcode login --provider {} --complete", provider),
+        "callback_url" => login_cmd_with(provider, "--callback-url '<url-or-query>'"),
+        "auth_code" => login_cmd_with(provider, "--auth-code '<code>'"),
+        "complete" => login_cmd_with(provider, "--complete"),
         _ => format!(
-            "jcode login --provider {} --callback-url '<url>'  # or --auth-code '<code>'",
-            provider
+            "{}  # or {}",
+            login_cmd_with(provider, "--callback-url '<url>'"),
+            login_cmd_with(provider, "--auth-code '<code>'")
         ),
     }
 }

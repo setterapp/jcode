@@ -40,9 +40,12 @@ pub(crate) async fn auth_test_choice_plan(
     }
 
     Ok(AuthTestChoicePlan::Skip(format!(
-        "Skipped: {} local endpoint reported no models. Re-run `jcode auth-test --provider {} --model <local-model>` or set a default model first.",
+        "Skipped: {} local endpoint reported no models. Re-run `{}` or set a default model first.",
         resolved.display_name,
-        choice.as_arg_value()
+        crate::product::command_with(&format!(
+            "auth-test --provider {} --model <local-model>",
+            choice.as_arg_value()
+        ))
     )))
 }
 

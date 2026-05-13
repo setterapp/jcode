@@ -28,7 +28,7 @@ pub fn run_plugin_list() -> Result<()> {
 
     if plugins.is_empty() {
         println!("No plugins installed.");
-        println!("  Use: jcode plug <npm-package>");
+        println!("  Use: {}", crate::product::command_with("plug <npm-package>"));
         return Ok(());
     }
 

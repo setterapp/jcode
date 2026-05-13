@@ -176,6 +176,7 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Web { .. }) => format!("{product} web"),
         Some(Command::Export { .. }) => format!("{product} export"),
         Some(Command::Import { .. }) => format!("{product} import"),
+        Some(Command::ImportFromJcode { .. }) => format!("{product} import-from-jcode"),
         Some(Command::Github(_)) => format!("{product} github"),
         Some(Command::Pr { .. }) => format!("{product} pr"),
         Some(Command::Stats { .. }) => format!("{product} stats"),
