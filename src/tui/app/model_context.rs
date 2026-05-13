@@ -185,6 +185,7 @@ impl App {
                     next_model
                 )));
                 self.set_status_notice(format!("Model → {}", next_model));
+                self.sidebar.set_model(&next_model);
             }
             Err(e) => {
                 self.push_display_message(DisplayMessage::error(format!(

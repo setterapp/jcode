@@ -1281,6 +1281,7 @@ pub(super) fn handle_modal_key(
                             format!("✓ Switched to model: {}", model),
                         ));
                         app.set_status_notice(format!("Model → {}", model));
+                        app.sidebar.set_model(&model);
                     }
                     Err(e) => {
                         app.push_display_message(crate::tui::DisplayMessage::error(
