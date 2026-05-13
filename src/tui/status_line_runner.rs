@@ -423,6 +423,8 @@ mod tests {
             total_output_tokens: 5_000,
             five_hour_resets_in_secs: None,
             seven_day_resets_in_secs: None,
+            five_hour_used_percentage: 0.0,
+            seven_day_used_percentage: 0.0,
         };
         let s = build_payload_json(&snap).expect("serialize");
         assert!(s.contains("\"id\":\"claude-sonnet-4-6\""), "{s}");

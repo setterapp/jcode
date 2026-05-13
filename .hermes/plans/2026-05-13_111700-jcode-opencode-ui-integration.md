@@ -240,13 +240,15 @@ The most maintainable path is building the opencode UX inside jcode as a new TUI
 ## Success Metrics
 
 - [x] `jcode web` opens web interface with full session management + real-time chat via WebSocket
+- [x] `jcode web` creates new sessions via POST /api/sessions
 - [x] Command palette (`Alt+K`) shows all models dynamically + fuzzy search
-- [x] Model switching works from command palette
-- [x] Session picker (`Alt+S`) opens from command palette
+- [x] Command palette shows recent sessions for quick resume
+- [x] Model switching works from command palette + Alt+M cycle
+- [x] Session picker (`Alt+R`) opens directly from TUI
+- [x] Sidebar (`Alt+B`) shows current model + daemon status + navigation
 - [x] `jcode export` exports real session data with sanitization
 - [x] `jcode import` reads and saves sessions from file/URL
-- [ ] `jcode --continue` opens polished TUI with session picker (already works, needs polish)
-- [x] Command palette shows recent sessions for quick resume
+- [x] All CLI commands: `agent`, `mcp`, `model`, `session`, `stats`, `pr`, `github`, `plugin`
 - [ ] Session scrolling is 60fps (virtualized rendering)
 - [ ] Memory usage < 200MB idle
 - [ ] Startup time < 200ms cold, < 50ms warm
