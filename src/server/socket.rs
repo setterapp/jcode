@@ -59,8 +59,9 @@ pub async fn connect_socket(path: &std::path::Path) -> Result<Stream> {
         Ok(stream) => Ok(stream),
         Err(err) if err.kind() == std::io::ErrorKind::ConnectionRefused && path.exists() => {
             anyhow::bail!(
-                "Socket exists but refused the connection at {}. Retry, or remove it after confirming no jcode server is running.",
-                path.display()
+                "Socket exists but refused the connection at {}. Retry, or remove it after confirming no {} server is running.",
+                path.display(),
+                crate::product::command_name()
             )
         }
         Err(err) if err.raw_os_error() == Some(libc::EMFILE) => Err(anyhow::anyhow!(
@@ -138,7 +139,8 @@ pub(super) fn acquire_daemon_lock() -> Result<DaemonLockGuard> {
     let path = daemon_lock_path();
     try_acquire_daemon_lock(&path)?.ok_or_else(|| {
         anyhow::anyhow!(
-            "Another jcode server process is already running for runtime dir {}",
+            "Another {} server process is already running for runtime dir {}",
+            crate::product::command_name(),
             crate::storage::runtime_dir().display()
         )
     })

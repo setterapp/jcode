@@ -22,9 +22,15 @@ pub(crate) fn resumed_window_title(session_id: &str) -> String {
     let icon = id::session_icon(&session_name);
     let session_label = crate::process_title::terminal_session_label_for_id(session_id);
     if let Some(server_info) = crate::registry::find_server_by_socket_sync(&server::socket_path()) {
-        format!("{} jcode/{} {}", icon, server_info.name, session_label)
+        format!(
+            "{} {}/{} {}",
+            icon,
+            crate::product::command_name(),
+            server_info.name,
+            session_label
+        )
     } else {
-        format!("{} jcode {}", icon, session_label)
+        format!("{} {} {}", icon, crate::product::command_name(), session_label)
     }
 }
 
@@ -155,7 +161,10 @@ pub async fn run_tui_client(
         );
     } else {
         crate::process_title::set_client_generic_title(super::selfdev::client_selfdev_requested());
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("jcode"));
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::SetTitle(crate::product::command_name())
+        );
     }
     startup_profile::mark("terminal_title");
 
@@ -995,7 +1004,10 @@ pub fn list_sessions() -> Result<()> {
                             );
                             warned_no_terminal = true;
                         }
-                        eprintln!("  jcode --resume {}", session_id);
+                        eprintln!(
+                            "  {}",
+                            crate::product::command_with(&format!("--resume {}", session_id))
+                        );
                     }
                     Err(e) => {
                         eprintln!("Failed to spawn session {}: {}", session_id, e);

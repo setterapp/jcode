@@ -502,22 +502,34 @@ pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
     let gw_config = &crate::config::config().gateway;
 
     if !gw_config.enabled {
-        eprintln!("\x1b[33m⚠\x1b[0m  Gateway is disabled. Enable it in ~/.jcode/config.toml:\n");
+        eprintln!(
+            "\x1b[33m⚠\x1b[0m  Gateway is disabled. Enable it in {}/config.toml:\n",
+            crate::storage::jcode_dir()?.display()
+        );
         eprintln!("    \x1b[2m[gateway]\x1b[0m");
         eprintln!("    \x1b[2menabled = true\x1b[0m");
         eprintln!("    \x1b[2mport = {}\x1b[0m\n", gw_config.port);
-        eprintln!("  Then restart the jcode server.\n");
+        eprintln!(
+            "  Then restart the {} server.\n",
+            crate::product::command_name()
+        );
     }
 
     let code = registry.generate_pairing_code();
     let connect_host = resolve_connect_host(&gw_config.bind_addr);
     let pair_uri = format!(
-        "jcode://pair?host={}&port={}&code={}",
-        connect_host, gw_config.port, code
+        "{}://pair?host={}&port={}&code={}",
+        crate::product::command_name(),
+        connect_host,
+        gw_config.port,
+        code
     );
 
     eprintln!();
-    eprintln!("  \x1b[1mScan with the jcode iOS app:\x1b[0m\n");
+    eprintln!(
+        "  \x1b[1mScan with the {} iOS app:\x1b[0m\n",
+        crate::product::command_name()
+    );
     match crate::login_qr::render_unicode_qr(&pair_uri) {
         Ok(qr) => {
             for line in qr.lines() {
@@ -662,10 +674,15 @@ pub async fn run_browser(action: &str) -> Result<()> {
                 println!("\nBuilt-in browser tool is ready.");
             } else if status.responding && !status.compatible {
                 println!(
-                    "\nThe browser bridge is connected, but the installed Firefox extension is out of date for this jcode build. Run `jcode browser setup` to repair or update it."
+                    "\nThe browser bridge is connected, but the installed Firefox extension is out of date for this {} build. Run `{}` to repair or update it.",
+                    crate::product::command_name(),
+                    crate::product::command_with("browser setup")
                 );
             } else {
-                println!("\nRun `jcode browser setup` to install or repair it.");
+                println!(
+                    "\nRun `{}` to install or repair it.",
+                    crate::product::command_with("browser setup")
+                );
             }
         }
         other => {

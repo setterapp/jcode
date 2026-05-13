@@ -6,7 +6,10 @@ use std::time::Duration;
 const RELOAD_HANDOFF_EVENT_POLL_MS: i32 = 100;
 
 pub fn reload_marker_path() -> PathBuf {
-    crate::storage::runtime_dir().join("jcode.reload")
+    crate::storage::runtime_dir().join(format!(
+        "{}.reload",
+        crate::storage::product_flavor().runtime_prefix()
+    ))
 }
 
 pub fn write_reload_marker() {

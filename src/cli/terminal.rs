@@ -73,8 +73,9 @@ pub fn show_crash_resume_hint() {
 
     if crashed.len() == 1 {
         eprintln!(
-            "\x1b[33m💥 Session \x1b[1m{}\x1b[0m\x1b[33m crashed. Resume with:\x1b[0m  jcode --resume {}",
-            session_label, id
+            "\x1b[33m💥 Session \x1b[1m{}\x1b[0m\x1b[33m crashed. Resume with:\x1b[0m  {}",
+            session_label,
+            crate::product::command_with(&format!("--resume {}", id))
         );
     } else {
         eprintln!(
@@ -82,15 +83,24 @@ pub fn show_crash_resume_hint() {
             crashed.len(),
             session_label
         );
-        eprintln!("\x1b[33m   Resume with:\x1b[0m  jcode --resume {}", id);
-        eprintln!("\x1b[33m   List all:\x1b[0m     jcode --resume");
+        eprintln!(
+            "\x1b[33m   Resume with:\x1b[0m  {}",
+            crate::product::command_with(&format!("--resume {}", id))
+        );
+        eprintln!(
+            "\x1b[33m   List all:\x1b[0m     {}",
+            crate::product::command_with("--resume")
+        );
     }
     eprintln!();
 }
 
 fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        anyhow::bail!("jcode TUI requires an interactive terminal (stdin/stdout must be a TTY)");
+        anyhow::bail!(
+            "{} TUI requires an interactive terminal (stdin/stdout must be a TTY)",
+            crate::product::command_name()
+        );
     }
     let is_resuming = std::env::var("JCODE_RESUMING").is_ok();
     if is_resuming {
@@ -175,7 +185,10 @@ pub fn print_session_resume_hint(session_id: &str) {
         "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
         session_name
     );
-    eprintln!("  jcode --resume {}", session_id);
+    eprintln!(
+        "  {}",
+        crate::product::command_with(&format!("--resume {}", session_id))
+    );
     eprintln!();
 }
 

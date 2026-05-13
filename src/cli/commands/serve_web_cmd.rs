@@ -7,13 +7,13 @@ pub async fn run_serve(port: u16, hostname: &str, open: bool) -> Result<()> {
 }
 
 pub async fn run_web(port: u16, hostname: &str) -> Result<()> {
-    println!("Starting jcode-plus Web UI...");
+    println!("Starting {} Web UI...", crate::product::command_name());
 
-    // Spawn the daemon if not already running (same as `jcode` with no subcommand)
+    // Spawn the daemon if not already running (same as plain CLI invocation)
     // This ensures the WebSocket proxy has a backend to connect to
     let running = super::super::dispatch::server_is_running().await;
     if !running {
-        println!("Starting jcode daemon...");
+        println!("Starting {} daemon...", crate::product::command_name());
         super::super::dispatch::spawn_server(
             &ProviderChoice::Auto,
             None,

@@ -120,7 +120,10 @@ fn spawn_background_update_check(args: &Args) {
                         ));
                     }
                 } else {
-                    logging::info("Update available! Run `jcode update` or `/reload` to update.");
+                    logging::info(&format!(
+                        "Update available! Run `{}` or `/reload` to update.",
+                        crate::product::command_with("update")
+                    ));
                 }
             }
             logging::info(&format!(
@@ -159,7 +162,10 @@ fn report_main_error(error: &anyhow::Error) {
     if let Some(session_id) = terminal::get_current_session() {
         output::stderr_blank_line();
         output::stderr_info("\x1b[33mTo restore this session, run:\x1b[0m");
-        output::stderr_info(format!("  jcode --resume {}", session_id));
+        output::stderr_info(format!(
+            "  {}",
+            crate::product::command_with(&format!("--resume {}", session_id))
+        ));
         output::stderr_blank_line();
     }
 }

@@ -1,7 +1,9 @@
 use crate::cli::args::{AmbientCommand, Args, Command};
 
 const LINUX_PROCESS_TITLE_LIMIT: usize = 15;
-const KILLALL_PROCESS_NAME: &str = "jcode";
+fn product_name() -> &'static str {
+    crate::product::binary_stem()
+}
 
 fn compact_process_title(prefix: &str, name: Option<&str>) -> String {
     let mut title = prefix.to_string();
@@ -74,7 +76,7 @@ fn set_killall_process_name() {
     #[cfg(target_os = "linux")]
     unsafe {
         let mut name = [0u8; 16];
-        let bytes = KILLALL_PROCESS_NAME.as_bytes();
+        let bytes = product_name().as_bytes();
         let len = bytes.len().min(name.len().saturating_sub(1));
         name[..len].copy_from_slice(&bytes[..len]);
         let _ = libc::prctl(libc::PR_SET_NAME, name.as_ptr(), 0, 0, 0);
@@ -82,16 +84,19 @@ fn set_killall_process_name() {
 }
 
 pub(crate) fn set_server_title(server_name: &str) {
-    set_title(compact_process_title("jcode:s:", Some(server_name)));
+    set_title(compact_process_title(
+        &format!("{}:s:", product_name()),
+        Some(server_name),
+    ));
 }
 
 pub(crate) fn set_client_generic_title(is_selfdev: bool) {
     let prefix = if is_selfdev {
-        "jcode:selfdev"
+        format!("{}:selfdev", product_name())
     } else {
-        "jcode:client"
+        format!("{}:client", product_name())
     };
-    set_title(compact_process_title(prefix, None));
+    set_title(compact_process_title(&prefix, None));
 }
 
 pub(crate) fn set_client_session_title(session_id: &str, is_selfdev: bool) {
@@ -99,8 +104,12 @@ pub(crate) fn set_client_session_title(session_id: &str, is_selfdev: bool) {
 }
 
 pub(crate) fn set_client_display_title(session_name: &str, is_selfdev: bool) {
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
-    set_title(compact_process_title(prefix, Some(session_name)));
+    let prefix = if is_selfdev {
+        format!("{}:d:", product_name())
+    } else {
+        format!("{}:c:", product_name())
+    };
+    set_title(compact_process_title(&prefix, Some(session_name)));
 }
 
 pub(crate) fn set_client_remote_display_title(
@@ -108,78 +117,83 @@ pub(crate) fn set_client_remote_display_title(
     session_name: &str,
     is_selfdev: bool,
 ) {
-    if server_name.is_empty() || server_name.eq_ignore_ascii_case("jcode") {
+    if server_name.is_empty() || server_name.eq_ignore_ascii_case(product_name()) {
         set_client_display_title(session_name, is_selfdev);
         return;
     }
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
+    let prefix = if is_selfdev {
+        format!("{}:d:", product_name())
+    } else {
+        format!("{}:c:", product_name())
+    };
     set_title(format!("{prefix}{server_name}/{session_name}"));
 }
 
 pub(crate) fn initial_title(args: &Args) -> String {
+    let product = product_name();
     match &args.command {
-        Some(Command::Serve { .. }) => "jcode:server".to_string(),
-        Some(Command::Connect) => "jcode:client".to_string(),
-        Some(Command::Run { .. }) => "jcode run".to_string(),
-        Some(Command::Login { .. }) => "jcode login".to_string(),
-        Some(Command::Repl) => "jcode repl".to_string(),
-        Some(Command::Update) => "jcode update".to_string(),
-        Some(Command::Version { .. }) => "jcode version".to_string(),
-        Some(Command::Usage { .. }) => "jcode usage".to_string(),
-        Some(Command::SelfDev { .. }) => "jcode:selfdev".to_string(),
-        Some(Command::Debug { .. }) => "jcode debug".to_string(),
-        Some(Command::Auth(_)) => "jcode auth".to_string(),
-        Some(Command::Provider(_)) => "jcode provider".to_string(),
-        Some(Command::Memory(_)) => "jcode memory".to_string(),
-        Some(Command::Session(_)) => "jcode session".to_string(),
+        Some(Command::Serve { .. }) => format!("{product}:server"),
+        Some(Command::Connect) => format!("{product}:client"),
+        Some(Command::Run { .. }) => format!("{product} run"),
+        Some(Command::Login { .. }) => format!("{product} login"),
+        Some(Command::Repl) => format!("{product} repl"),
+        Some(Command::Update) => format!("{product} update"),
+        Some(Command::Version { .. }) => format!("{product} version"),
+        Some(Command::Usage { .. }) => format!("{product} usage"),
+        Some(Command::SelfDev { .. }) => format!("{product}:selfdev"),
+        Some(Command::Debug { .. }) => format!("{product} debug"),
+        Some(Command::Auth(_)) => format!("{product} auth"),
+        Some(Command::Provider(_)) => format!("{product} provider"),
+        Some(Command::Memory(_)) => format!("{product} memory"),
+        Some(Command::Session(_)) => format!("{product} session"),
         Some(Command::Ambient(subcommand)) => match subcommand {
-            AmbientCommand::RunVisible => "jcode ambient visible".to_string(),
-            _ => "jcode ambient".to_string(),
+            AmbientCommand::RunVisible => format!("{product} ambient visible"),
+            _ => format!("{product} ambient"),
         },
-        Some(Command::Pair { .. }) => "jcode pair".to_string(),
-        Some(Command::Permissions) => "jcode permissions".to_string(),
-        Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
-        Some(Command::Dictate { .. }) => "jcode dictate".to_string(),
+        Some(Command::Pair { .. }) => format!("{product} pair"),
+        Some(Command::Permissions) => format!("{product} permissions"),
+        Some(Command::Transcript { .. }) => format!("{product} transcript"),
+        Some(Command::Dictate { .. }) => format!("{product} dictate"),
         Some(Command::SetupHotkey {
             listen_macos_hotkey,
         }) => {
             if *listen_macos_hotkey {
-                "jcode hotkey listener".to_string()
+                format!("{product} hotkey listener")
             } else {
-                "jcode hotkey setup".to_string()
+                format!("{product} hotkey setup")
             }
         }
-        Some(Command::Browser { .. }) => "jcode browser".to_string(),
-        Some(Command::Replay { .. }) => "jcode replay".to_string(),
-        Some(Command::Model(_)) => "jcode model".to_string(),
-        Some(Command::AuthTest { .. }) => "jcode auth-test".to_string(),
-        Some(Command::Restart { .. }) => "jcode restart".to_string(),
-        Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
-        Some(Command::Mcp(_)) => "jcode mcp".to_string(),
-        Some(Command::AgentCmd(_)) => "jcode agent".to_string(),
-        Some(Command::Plug { .. }) => "jcode plug".to_string(),
-        Some(Command::ServeWeb { .. }) => "jcode serve".to_string(),
-        Some(Command::Web { .. }) => "jcode web".to_string(),
-        Some(Command::Export { .. }) => "jcode export".to_string(),
-        Some(Command::Import { .. }) => "jcode import".to_string(),
-        Some(Command::Github(_)) => "jcode github".to_string(),
-        Some(Command::Pr { .. }) => "jcode pr".to_string(),
-        Some(Command::Stats { .. }) => "jcode stats".to_string(),
-        Some(Command::Uninstall { .. }) => "jcode uninstall".to_string(),
-        Some(Command::Db { .. }) => "jcode db".to_string(),
-        Some(Command::Completion { .. }) => "jcode completion".to_string(),
+        Some(Command::Browser { .. }) => format!("{product} browser"),
+        Some(Command::Replay { .. }) => format!("{product} replay"),
+        Some(Command::Model(_)) => format!("{product} model"),
+        Some(Command::AuthTest { .. }) => format!("{product} auth-test"),
+        Some(Command::Restart { .. }) => format!("{product} restart"),
+        Some(Command::SetupLauncher) => format!("{product} setup-launcher"),
+        Some(Command::Mcp(_)) => format!("{product} mcp"),
+        Some(Command::AgentCmd(_)) => format!("{product} agent"),
+        Some(Command::Plug { .. }) => format!("{product} plug"),
+        Some(Command::ServeWeb { .. }) => format!("{product} serve"),
+        Some(Command::Web { .. }) => format!("{product} web"),
+        Some(Command::Export { .. }) => format!("{product} export"),
+        Some(Command::Import { .. }) => format!("{product} import"),
+        Some(Command::Github(_)) => format!("{product} github"),
+        Some(Command::Pr { .. }) => format!("{product} pr"),
+        Some(Command::Stats { .. }) => format!("{product} stats"),
+        Some(Command::Uninstall { .. }) => format!("{product} uninstall"),
+        Some(Command::Db { .. }) => format!("{product} db"),
+        Some(Command::Completion { .. }) => format!("{product} completion"),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
                 let prefix = if crate::cli::selfdev::client_selfdev_requested() {
-                    "jcode:d:"
+                    format!("{product}:d:")
                 } else {
-                    "jcode:c:"
+                    format!("{product}:c:")
                 };
-                compact_process_title(prefix, Some(&session_name(resume)))
+                compact_process_title(&prefix, Some(&session_name(resume)))
             } else if crate::cli::selfdev::client_selfdev_requested() {
-                "jcode:selfdev".to_string()
+                format!("{product}:selfdev")
             } else {
-                "jcode:client".to_string()
+                format!("{product}:client")
             }
         }
     }

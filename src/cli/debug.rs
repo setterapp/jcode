@@ -10,6 +10,7 @@ pub async fn run_debug_command(
     socket_path: Option<String>,
     _wait: bool,
 ) -> Result<()> {
+    let cmd = crate::product::command_name();
     match command {
         "list" => return debug_list_servers().await,
         "start" => return debug_start_server(arg, socket_path).await,
@@ -31,12 +32,26 @@ pub async fn run_debug_command(
     if !crate::transport::is_socket_path(&debug_socket) {
         eprintln!("Debug socket not found at {:?}", debug_socket);
         eprintln!("\nMake sure:");
-        eprintln!("  1. A jcode server is running (jcode or jcode serve)");
-        eprintln!("  2. debug_socket is enabled in ~/.jcode/config.toml");
+        eprintln!(
+            "  1. A {} server is running ({} or {})",
+            cmd,
+            cmd,
+            crate::product::command_with("serve")
+        );
+        eprintln!(
+            "  2. debug_socket is enabled in {}/config.toml",
+            crate::storage::jcode_dir()?.display()
+        );
         eprintln!("     [display]");
         eprintln!("     debug_socket = true");
-        eprintln!("\nOr use 'jcode debug start' to start a server.");
-        eprintln!("Use 'jcode debug list' to see running servers.");
+        eprintln!(
+            "\nOr use '{}' to start a server.",
+            crate::product::command_with("debug start")
+        );
+        eprintln!(
+            "Use '{}' to see running servers.",
+            crate::product::command_with("debug list")
+        );
         anyhow::bail!("Debug socket not available");
     }
 
@@ -104,6 +119,7 @@ pub async fn run_debug_command(
 }
 
 async fn debug_list_servers() -> Result<()> {
+    let cmd = crate::product::command_name();
     let mut servers = Vec::new();
 
     let runtime_dir = crate::storage::runtime_dir();
@@ -118,7 +134,7 @@ async fn debug_list_servers() -> Result<()> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && name.starts_with("jcode")
+                    && name.starts_with(crate::storage::product_flavor().runtime_prefix())
                     && name.ends_with(".sock")
                     && !name.contains("-debug")
                 {
@@ -129,12 +145,12 @@ async fn debug_list_servers() -> Result<()> {
     }
 
     if servers.is_empty() {
-        println!("No running jcode servers found.");
-        println!("\nStart one with: jcode debug start");
+        println!("No running {} servers found.", cmd);
+        println!("\nStart one with: {}", crate::product::command_with("debug start"));
         return Ok(());
     }
 
-    println!("Running jcode servers:\n");
+    println!("Running {} servers:\n", cmd);
 
     for socket_path in servers {
         let debug_socket = {
@@ -178,7 +194,10 @@ async fn debug_list_servers() -> Result<()> {
     }
 
     println!("\nUse -s/--socket to target a specific server:");
-    println!("  jcode debug -s /path/to/socket.sock sessions");
+    println!(
+        "  {}",
+        crate::product::command_with("debug -s /path/to/socket.sock sessions")
+    );
 
     Ok(())
 }
@@ -220,6 +239,7 @@ async fn get_server_info(debug_socket: &std::path::Path) -> Result<String> {
 }
 
 async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()> {
+    let cmd = crate::product::command_name();
     let socket = socket_path.unwrap_or_else(|| {
         if !arg.is_empty() {
             arg.to_string()
@@ -236,7 +256,10 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
             .is_ok()
     {
         eprintln!("Server already running at {}", socket);
-        eprintln!("Use 'jcode debug list' to see all servers.");
+        eprintln!(
+            "Use '{}' to see all servers.",
+            crate::product::command_with("debug list")
+        );
         return Ok(());
     }
 
@@ -250,7 +273,7 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
     };
     let _ = std::fs::remove_file(&debug_socket);
 
-    eprintln!("Starting jcode server...");
+    eprintln!("Starting {} server...", cmd);
 
     let exe = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(&exe);
@@ -285,7 +308,10 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
     if crate::transport::is_socket_path(&debug_socket) {
         eprintln!("✓ Debug socket at {}", debug_socket.display());
     } else {
-        eprintln!("⚠ Debug socket not enabled. Add to ~/.jcode/config.toml:");
+        eprintln!(
+            "⚠ Debug socket not enabled. Add to {}/config.toml:",
+            crate::storage::jcode_dir()?.display()
+        );
         eprintln!("  [display]");
         eprintln!("  debug_socket = true");
     }
