@@ -61,6 +61,11 @@ impl App {
 
     fn effective_remote_provider_model(&self) -> Option<String> {
         Self::sanitize_remote_model_hint(self.remote_provider_model.clone())
+            .or_else(|| {
+                Self::sanitize_remote_model_hint(
+                    self.client_core_state.session_meta.provider_model.clone(),
+                )
+            })
             .or_else(|| Self::sanitize_remote_model_hint(self.session.model.clone()))
             .or_else(|| self.configured_remote_model_hint())
     }
@@ -101,6 +106,7 @@ impl App {
         let configured_provider_hint = self.configured_remote_provider_hint();
         self.remote_provider_name
             .clone()
+            .or_else(|| self.client_core_state.session_meta.provider_name.clone())
             .or_else(|| {
                 self.effective_remote_provider_model().and_then(|model| {
                     crate::provider::provider_for_model_with_hint(&model, None)
@@ -363,15 +369,21 @@ impl crate::tui::TuiState for App {
     }
 
     fn upstream_provider(&self) -> Option<String> {
-        self.upstream_provider.clone()
+        self.upstream_provider
+            .clone()
+            .or_else(|| self.client_core_state.session_meta.upstream_provider.clone())
     }
 
     fn connection_type(&self) -> Option<String> {
-        self.connection_type.clone()
+        self.connection_type
+            .clone()
+            .or_else(|| self.client_core_state.session_meta.connection_type.clone())
     }
 
     fn status_detail(&self) -> Option<String> {
-        self.status_detail.clone()
+        self.status_detail
+            .clone()
+            .or_else(|| self.client_core_state.session_meta.status_detail.clone())
     }
 
     fn mcp_servers(&self) -> Vec<(String, usize)> {
