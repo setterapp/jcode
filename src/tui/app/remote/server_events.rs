@@ -264,6 +264,7 @@ pub(in crate::tui::app) fn handle_server_event(
             ));
             if app.current_message_id == Some(id) {
                 completed_current_message = true;
+                app.status_detail = None;
                 app.clear_pending_remote_retry();
                 if let Some(chunk) = app.stream_buffer.flush() {
                     app.append_streaming_text(&chunk);
