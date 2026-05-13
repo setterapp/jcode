@@ -131,30 +131,42 @@ pub fn update_estimate(summary: String, duration: Duration) -> UpdateEstimate {
     }
 }
 
-pub fn get_asset_name() -> &'static str {
+fn asset_prefix() -> &'static str {
+    match std::env::var("JCODE_PRODUCT_FLAVOR")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("jcode-plus") => "jcode-plus",
+        _ => "jcode",
+    }
+}
+
+pub fn get_asset_name() -> String {
+    let prefix = asset_prefix();
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        "jcode-linux-x86_64"
+        format!("{prefix}-linux-x86_64")
     }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
     {
-        "jcode-linux-aarch64"
+        format!("{prefix}-linux-aarch64")
     }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     {
-        "jcode-macos-x86_64"
+        format!("{prefix}-macos-x86_64")
     }
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        "jcode-macos-aarch64"
+        format!("{prefix}-macos-aarch64")
     }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     {
-        "jcode-windows-x86_64.exe"
+        format!("{prefix}-windows-x86_64.exe")
     }
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
-        "jcode-windows-aarch64.exe"
+        format!("{prefix}-windows-aarch64.exe")
     }
     #[cfg(not(any(
         all(target_os = "linux", target_arch = "x86_64"),
@@ -165,7 +177,7 @@ pub fn get_asset_name() -> &'static str {
         all(target_os = "windows", target_arch = "aarch64"),
     )))]
     {
-        "jcode-unknown"
+        format!("{prefix}-unknown")
     }
 }
 
@@ -323,7 +335,7 @@ mod tests {
 
     #[test]
     fn asset_name_is_supported() {
-        assert_ne!(get_asset_name(), "jcode-unknown");
+        assert_ne!(get_asset_name(), format!("{}-unknown", asset_prefix()));
     }
 
     #[test]

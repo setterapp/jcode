@@ -39,17 +39,22 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 }
 
 $Repo = "1jehuang/jcode"
+$ProductName = if ($env:JCODE_PRODUCT_FLAVOR) { $env:JCODE_PRODUCT_FLAVOR } else { "jcode" }
+if ($ProductName -notin @("jcode", "jcode-plus")) {
+    Write-Host "error: Unsupported JCODE_PRODUCT_FLAVOR '$ProductName' (expected: jcode or jcode-plus)" -ForegroundColor Red
+    exit 1
+}
 
 if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA "jcode\bin"
+    $InstallDir = Join-Path $env:LOCALAPPDATA "$ProductName\bin"
 }
 
 $JcodeHome = if ($env:JCODE_HOME) {
     $env:JCODE_HOME
 } elseif ($env:USERPROFILE) {
-    Join-Path $env:USERPROFILE ".jcode"
+    Join-Path $env:USERPROFILE ".$ProductName"
 } else {
-    Join-Path ([Environment]::GetFolderPath("UserProfile")) ".jcode"
+    Join-Path ([Environment]::GetFolderPath("UserProfile")) ".$ProductName"
 }
 
 $HotkeyDir = Join-Path $JcodeHome "hotkey"
@@ -384,8 +389,8 @@ function Get-JcodeWindowsArtifact {
 
     foreach ($arch in $candidates) {
         switch -Regex ($arch.Trim()) {
-            '^(X64|AMD64|x86_64)$' { return "jcode-windows-x86_64" }
-            '^(Arm64|ARM64|AARCH64|aarch64)$' { return "jcode-windows-aarch64" }
+            '^(X64|AMD64|x86_64)$' { return "$ProductName-windows-x86_64" }
+            '^(Arm64|ARM64|AARCH64|aarch64)$' { return "$ProductName-windows-aarch64" }
         }
     }
 
@@ -422,10 +427,10 @@ $VersionNum = $Version.TrimStart('v')
 $TgzUrl = "https://github.com/$Repo/releases/download/$Version/$Artifact.tar.gz"
 $ExeUrl = "https://github.com/$Repo/releases/download/$Version/$Artifact.exe"
 
-$BuildsDir = Join-Path $env:LOCALAPPDATA "jcode\builds"
+$BuildsDir = Join-Path $env:LOCALAPPDATA "$ProductName\builds"
 $StableDir = Join-Path $BuildsDir "stable"
 $VersionDir = Join-Path $BuildsDir "versions\$VersionNum"
-$LauncherPath = Join-Path $InstallDir "jcode.exe"
+$LauncherPath = Join-Path $InstallDir "$ProductName.exe"
 
 $Existing = ""
 if (Test-Path $LauncherPath) {
@@ -434,12 +439,12 @@ if (Test-Path $LauncherPath) {
 
 if ($Existing) {
     if ($Existing -match [regex]::Escape($VersionNum)) {
-        Write-Info "jcode $Version is already installed - reinstalling"
+        Write-Info "$ProductName $Version is already installed - reinstalling"
     } else {
-        Write-Info "Updating jcode $Existing -> $Version"
+        Write-Info "Updating $ProductName $Existing -> $Version"
     }
 } else {
-    Write-Info "Installing jcode $Version"
+    Write-Info "Installing $ProductName $Version"
 }
 Write-Info "  launcher: $LauncherPath"
 
@@ -447,11 +452,11 @@ foreach ($d in @($InstallDir, $StableDir, $VersionDir)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
 }
 
-$TempDir = Join-Path $env:TEMP "jcode-install-$(Get-Random)"
+$TempDir = Join-Path $env:TEMP "$ProductName-install-$(Get-Random)"
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
 $DownloadMode = ""
-$DownloadPath = Join-Path $TempDir "jcode.download"
+$DownloadPath = Join-Path $TempDir "$ProductName.download"
 
 if ($ResolvedArtifactExePath) {
     Write-Info "Using local artifact exe: $ResolvedArtifactExePath"
@@ -477,7 +482,7 @@ if ($ResolvedArtifactExePath) {
     }
 }
 
-$DestBin = Join-Path $VersionDir "jcode.exe"
+$DestBin = Join-Path $VersionDir "$ProductName.exe"
 
 if ($DownloadMode -eq "tar") {
     Write-Info "Extracting..."
@@ -494,7 +499,7 @@ if ($DownloadMode -eq "tar") {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Write-Err "git is required to build from source" }
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { Write-Err "cargo is required to build from source" }
 
-    $SrcDir = Join-Path $TempDir "jcode-src"
+    $SrcDir = Join-Path $TempDir "$ProductName-src"
     Write-Info "Cloning $Repo at $Version..."
     $gitCloneResult = Invoke-ProcessWithTimeout -FilePath "git" -ArgumentList @(
         "clone",
@@ -514,8 +519,8 @@ if ($DownloadMode -eq "tar") {
         Write-Err "Failed to clone $Repo at $Version (exit code: $($gitCloneResult.ExitCode))"
     }
 
-    Write-Info "Building jcode from source (this can take several minutes)..."
-    $cargoResult = Invoke-ProcessWithTimeout -FilePath "cargo" -ArgumentList @("build", "--release", "--manifest-path", (Join-Path $SrcDir "Cargo.toml")) -TimeoutSeconds 1800 -FriendlyName "cargo-build" -CaptureOutput
+    Write-Info "Building $ProductName from source (this can take several minutes)..."
+    $cargoResult = Invoke-ProcessWithTimeout -FilePath "cargo" -ArgumentList @("build", "--release", "--manifest-path", (Join-Path $SrcDir "Cargo.toml"), "--bin", $ProductName) -TimeoutSeconds 1800 -FriendlyName "cargo-build" -CaptureOutput
     if ($cargoResult.TimedOut) {
         Write-LogTail -Path $cargoResult.StdoutPath -Label "cargo stdout"
         Write-LogTail -Path $cargoResult.StderrPath -Label "cargo stderr"
@@ -527,14 +532,14 @@ if ($DownloadMode -eq "tar") {
         Write-Err "cargo build failed (exit code: $($cargoResult.ExitCode))"
     }
 
-    $BuiltBin = Join-Path $SrcDir "target\release\jcode.exe"
+    $BuiltBin = Join-Path $SrcDir "target\release\$ProductName.exe"
     if (-not (Test-Path $BuiltBin)) { Write-Err "Built binary not found at $BuiltBin" }
     Copy-Item -Path $BuiltBin -Destination $DestBin -Force
 }
 
-Copy-Item -Path $DestBin -Destination (Join-Path $StableDir "jcode.exe") -Force
+Copy-Item -Path $DestBin -Destination (Join-Path $StableDir "$ProductName.exe") -Force
 Set-Content -Path (Join-Path $BuildsDir "stable-version") -Value $VersionNum
-Copy-Item -Path (Join-Path $StableDir "jcode.exe") -Destination $LauncherPath -Force
+Copy-Item -Path (Join-Path $StableDir "$ProductName.exe") -Destination $LauncherPath -Force
 
 Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -565,7 +570,7 @@ if ($SkipHotkeySetup) {
 Set-SetupHintsState -AlacrittyConfigured:(Test-AlacrittyInstalled) -HotkeyConfigured:$configuredHotkey
 
 Write-Host ""
-Write-Info "jcode $Version installed successfully!"
+Write-Info "$ProductName $Version installed successfully!"
 Write-Host ""
 
 if (Test-AlacrittyInstalled) {
@@ -576,14 +581,14 @@ if (Test-AlacrittyInstalled) {
 }
 
 if ($configuredHotkey) {
-    Write-Info "Global hotkey ready: Alt+; opens jcode in Alacritty"
+    Write-Info "Global hotkey ready: Alt+; opens $ProductName in Alacritty"
     Write-Host ""
 }
 
-if (Get-Command jcode -ErrorAction SilentlyContinue) {
-    Write-Info "Run 'jcode' to get started."
+if (Get-Command $ProductName -ErrorAction SilentlyContinue) {
+    Write-Info "Run '$ProductName' to get started."
 } else {
     Write-Host "  Open a new terminal window, then run:"
     Write-Host ""
-    Write-Host "    jcode" -ForegroundColor Green
+    Write-Host "    $ProductName" -ForegroundColor Green
 }

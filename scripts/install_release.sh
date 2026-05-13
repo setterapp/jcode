@@ -3,11 +3,20 @@
 # update the stable + current channel symlinks, and point the launcher at current.
 #
 # Paths after install:
-# - ~/.jcode/builds/versions/<hash>/jcode (immutable)
-# - ~/.jcode/builds/stable/jcode -> .../versions/<hash>/jcode
-# - ~/.jcode/builds/current/jcode -> .../versions/<hash>/jcode
-# - ~/.local/bin/jcode -> ~/.jcode/builds/current/jcode (launcher)
+# - ~/.<product>/builds/versions/<hash>/<product> (immutable)
+# - ~/.<product>/builds/stable/<product> -> .../versions/<hash>/<product>
+# - ~/.<product>/builds/current/<product> -> .../versions/<hash>/<product>
+# - ~/.local/bin/<product> -> ~/.<product>/builds/current/<product> (launcher)
 set -euo pipefail
+product="${JCODE_PRODUCT_FLAVOR:-jcode}"
+
+case "$product" in
+  jcode|jcode-plus) ;;
+  *)
+    echo "Unsupported JCODE_PRODUCT_FLAVOR: $product (expected: jcode or jcode-plus)" >&2
+    exit 1
+    ;;
+esac
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
@@ -35,8 +44,8 @@ case "$profile" in
     ;;
 esac
 
-cargo build --profile "$profile" --manifest-path "$repo_root/Cargo.toml"
-bin="$repo_root/target/$profile/jcode"
+cargo build --profile "$profile" --manifest-path "$repo_root/Cargo.toml" --bin "$product"
+bin="$repo_root/target/$profile/$product"
 
 if [[ ! -x "$bin" ]]; then
   echo "Release binary not found: $bin" >&2
@@ -57,16 +66,16 @@ if [[ -z "$hash" ]]; then
   hash="$(date +%Y%m%d%H%M%S)"
 fi
 
-# Install versioned binary into ~/.jcode/builds/versions/<hash>/
-builds_dir="$HOME/.jcode/builds"
+# Install versioned binary into ~/.<product>/builds/versions/<hash>/
+builds_dir="$HOME/.${product}/builds"
 version_dir="$builds_dir/versions/$hash"
 mkdir -p "$version_dir"
-install -m 755 "$bin" "$version_dir/jcode"
+install -m 755 "$bin" "$version_dir/$product"
 
 # Update stable symlink
 stable_dir="$builds_dir/stable"
 mkdir -p "$stable_dir"
-ln -sfn "$version_dir/jcode" "$stable_dir/jcode"
+ln -sfn "$version_dir/$product" "$stable_dir/$product"
 
 # Update stable-version marker
 printf '%s\n' "$hash" > "$builds_dir/stable-version"
@@ -74,18 +83,18 @@ printf '%s\n' "$hash" > "$builds_dir/stable-version"
 # Update current symlink + marker
 current_dir="$builds_dir/current"
 mkdir -p "$current_dir"
-ln -sfn "$version_dir/jcode" "$current_dir/jcode"
+ln -sfn "$version_dir/$product" "$current_dir/$product"
 printf '%s\n' "$hash" > "$builds_dir/current-version"
 
 # Update launcher path to current channel
 install_dir="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$install_dir"
-ln -sfn "$current_dir/jcode" "$install_dir/jcode"
+ln -sfn "$current_dir/$product" "$install_dir/$product"
 
-echo "Installed: $version_dir/jcode"
-echo "Updated stable symlink: $stable_dir/jcode -> $version_dir/jcode"
-echo "Updated current symlink: $current_dir/jcode -> $version_dir/jcode"
-echo "Updated launcher symlink: $install_dir/jcode -> $current_dir/jcode"
+echo "Installed: $version_dir/$product"
+echo "Updated stable symlink: $stable_dir/$product -> $version_dir/$product"
+echo "Updated current symlink: $current_dir/$product -> $version_dir/$product"
+echo "Updated launcher symlink: $install_dir/$product -> $current_dir/$product"
 
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$install_dir"; then
   echo ""

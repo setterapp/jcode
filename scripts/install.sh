@@ -3,6 +3,12 @@ set -euo pipefail
 
 REPO="1jehuang/jcode"
 IS_WINDOWS=false
+PRODUCT="${JCODE_PRODUCT_FLAVOR:-jcode}"
+
+case "$PRODUCT" in
+  jcode|jcode-plus) ;;
+  *) err "Unsupported JCODE_PRODUCT_FLAVOR: $PRODUCT (expected: jcode or jcode-plus)" ;;
+esac
 
 info() { printf '\033[1;34m%s\033[0m\n' "$*"; }
 err()  { printf '\033[1;31merror: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -13,23 +19,23 @@ ARCH="$(uname -m)"
 case "$OS" in
   Linux)
     case "$ARCH" in
-      x86_64)  ARTIFACT="jcode-linux-x86_64" ;;
-      aarch64|arm64) ARTIFACT="jcode-linux-aarch64" ;;
+      x86_64)  ARTIFACT="${PRODUCT}-linux-x86_64" ;;
+      aarch64|arm64) ARTIFACT="${PRODUCT}-linux-aarch64" ;;
       *)       err "Unsupported Linux architecture: $ARCH" ;;
     esac
     ;;
   Darwin)
     case "$ARCH" in
-      arm64)   ARTIFACT="jcode-macos-aarch64" ;;
-      x86_64)  ARTIFACT="jcode-macos-x86_64" ;;
+      arm64)   ARTIFACT="${PRODUCT}-macos-aarch64" ;;
+      x86_64)  ARTIFACT="${PRODUCT}-macos-x86_64" ;;
       *)       err "Unsupported macOS architecture: $ARCH" ;;
     esac
     ;;
   MINGW*|MSYS*|CYGWIN*)
     IS_WINDOWS=true
     case "$ARCH" in
-      x86_64|AMD64)  ARTIFACT="jcode-windows-x86_64" ;;
-      aarch64|arm64|ARM64) ARTIFACT="jcode-windows-aarch64" ;;
+      x86_64|AMD64)  ARTIFACT="${PRODUCT}-windows-x86_64" ;;
+      aarch64|arm64|ARM64) ARTIFACT="${PRODUCT}-windows-aarch64" ;;
       *)       err "Unsupported Windows architecture: $ARCH" ;;
     esac
     ;;
@@ -39,7 +45,7 @@ case "$OS" in
 esac
 
 if [ "$IS_WINDOWS" = true ]; then
-  INSTALL_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/jcode/bin}"
+  INSTALL_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/$PRODUCT/bin}"
 else
   INSTALL_DIR="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
 fi
@@ -52,15 +58,15 @@ URL_BIN="https://github.com/$REPO/releases/download/$VERSION/$ARTIFACT"
 
 if [ "$IS_WINDOWS" = true ]; then
   EXE=".exe"
-  builds_dir="$LOCALAPPDATA/jcode/builds"
+  builds_dir="$LOCALAPPDATA/$PRODUCT/builds"
 else
   EXE=""
-  builds_dir="$HOME/.jcode/builds"
+  builds_dir="$HOME/.${PRODUCT}/builds"
 fi
 stable_dir="$builds_dir/stable"
 current_dir="$builds_dir/current"
 version_dir="$builds_dir/versions"
-launcher_path="$INSTALL_DIR/jcode${EXE}"
+launcher_path="$INSTALL_DIR/${PRODUCT}${EXE}"
 
 EXISTING=""
 if [ -x "$launcher_path" ]; then
@@ -69,12 +75,12 @@ fi
 
 if [ -n "$EXISTING" ]; then
   if echo "$EXISTING" | grep -qF "${VERSION#v}"; then
-    info "jcode $VERSION is already installed — reinstalling"
+    info "$PRODUCT $VERSION is already installed — reinstalling"
   else
-    info "Updating jcode $EXISTING → $VERSION"
+    info "Updating $PRODUCT $EXISTING → $VERSION"
   fi
 else
-  info "Installing jcode $VERSION"
+  info "Installing $PRODUCT $VERSION"
 fi
 info "  launcher: $launcher_path"
 
@@ -94,7 +100,7 @@ version="${VERSION#v}"
 dest_version_dir="$version_dir/$version"
 mkdir -p "$dest_version_dir"
 
-bin_name="jcode${EXE}"
+bin_name="${PRODUCT}${EXE}"
 
 if [ "$download_mode" = "tar" ]; then
   tar xzf "$tmpdir/jcode.download" -C "$tmpdir"
@@ -110,10 +116,10 @@ else
   command -v git >/dev/null 2>&1 || err "git is required to build from source"
   command -v cargo >/dev/null 2>&1 || err "cargo is required to build from source"
 
-  src_dir="$tmpdir/jcode-src"
+  src_dir="$tmpdir/${PRODUCT}-src"
   git clone --depth 1 --branch "$VERSION" "https://github.com/$REPO.git" "$src_dir" \
     || err "Failed to clone $REPO at $VERSION"
-  cargo build --release --manifest-path "$src_dir/Cargo.toml" \
+  cargo build --release --manifest-path "$src_dir/Cargo.toml" --bin "$PRODUCT" \
     || err "cargo build failed while building $REPO from source"
 
   src_bin="$src_dir/target/release/$bin_name"
@@ -148,16 +154,16 @@ fi
 if [ "$IS_WINDOWS" = true ]; then
   win_install_dir=$(cygpath -w "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")
   echo ""
-  info "✅ jcode $VERSION installed successfully!"
+  info "✅ $PRODUCT $VERSION installed successfully!"
   echo ""
-  if command -v jcode >/dev/null 2>&1; then
-    info "Run 'jcode' to get started."
+  if command -v "$PRODUCT" >/dev/null 2>&1; then
+    info "Run '$PRODUCT' to get started."
   else
-    echo "  To start using jcode right now, run:"
+    echo "  To start using $PRODUCT right now, run:"
     echo ""
-    printf '    \033[1;32mexport PATH="%s:$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
+    printf '    \033[1;32mexport PATH="%s:$PATH" && %s\033[0m\n' "$INSTALL_DIR" "$PRODUCT"
     echo ""
-    echo "  To add jcode to PATH permanently (PowerShell):"
+    echo "  To add $PRODUCT to PATH permanently (PowerShell):"
     echo ""
     printf '    \033[1;32m[Environment]::SetEnvironmentVariable("Path", "%s;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")\033[0m\n' "$win_install_dir"
   fi
@@ -200,7 +206,7 @@ else
   fi
 
   echo ""
-  info "✅ jcode $VERSION installed successfully!"
+  info "✅ $PRODUCT $VERSION installed successfully!"
   echo ""
 
   if [ "$(uname -s)" = "Darwin" ]; then
@@ -211,13 +217,13 @@ else
     fi
   fi
 
-  if command -v jcode >/dev/null 2>&1; then
-    info "Run 'jcode' to get started."
+  if command -v "$PRODUCT" >/dev/null 2>&1; then
+    info "Run '$PRODUCT' to get started."
   else
-    echo "  To start using jcode right now, run:"
+    echo "  To start using $PRODUCT right now, run:"
     echo ""
-    printf '    \033[1;32mexport PATH="%s:\$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
+    printf '    \033[1;32mexport PATH="%s:\$PATH" && %s\033[0m\n' "$INSTALL_DIR" "$PRODUCT"
     echo ""
-    echo "  Future terminal sessions will have jcode on PATH automatically."
+    echo "  Future terminal sessions will have $PRODUCT on PATH automatically."
   fi
 fi

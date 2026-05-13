@@ -253,7 +253,7 @@ fn platform_asset(release: &GitHubRelease) -> Result<&GitHubAsset> {
     release
         .assets
         .iter()
-        .find(|a| a.name.starts_with(asset_name))
+        .find(|a| a.name.starts_with(&asset_name))
         .ok_or_else(|| anyhow::anyhow!("No asset found for platform: {}", asset_name))
 }
 
@@ -561,7 +561,7 @@ fn check_for_stable_update_blocking() -> Result<Option<GitHubRelease>> {
         let has_asset = release
             .assets
             .iter()
-            .any(|a| a.name.starts_with(asset_name));
+            .any(|a| a.name.starts_with(&asset_name));
 
         if has_asset {
             return Ok(Some(release));
@@ -628,7 +628,7 @@ fn check_for_main_update_blocking() -> Result<Option<GitHubRelease>> {
         let has_asset = release
             .assets
             .iter()
-            .any(|a| a.name.starts_with(asset_name));
+            .any(|a| a.name.starts_with(&asset_name));
         if has_asset {
             let release_version = release.tag_name.trim_start_matches('v');
             let current_version = current_update_semver().trim_start_matches('v');
@@ -753,7 +753,7 @@ pub fn download_and_install_blocking_with_progress(
     let asset = release
         .assets
         .iter()
-        .find(|a| a.name.starts_with(asset_name))
+        .find(|a| a.name.starts_with(&asset_name))
         .ok_or_else(|| anyhow::anyhow!("No asset found for platform: {}", asset_name))?;
 
     let download_url = asset.browser_download_url.clone();
