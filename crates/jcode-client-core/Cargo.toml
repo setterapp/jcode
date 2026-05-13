@@ -1,0 +1,9 @@
+[package]
+name = "jcode-client-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jcode-protocol = { path = "../jcode-protocol" }
+jcode-config-types = { path = "../jcode-config-types" }
+jcode-side-panel-types = { path = "../jcode-side-panel-types" }

@@ -65,6 +65,7 @@ members = [
     "crates/jcode-tui-sidebar",
     "crates/jcode-tui-command-palette",
     "crates/jcode-tool-web",
+    "crates/jcode-client-core",
 ]
 
 [lib]

@@ -3597,6 +3597,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-client-core"
+version = "0.1.0"
+dependencies = [
+ "jcode-config-types",
+ "jcode-protocol",
+ "jcode-side-panel-types",
+]
+
+[[package]]
 name = "jcode-compaction-core"
 version = "0.1.0"
 dependencies = [
