@@ -54,12 +54,15 @@ pub fn find_repo_in_ancestors(start: &Path) -> Option<PathBuf> {
 }
 
 pub fn binary_stem() -> &'static str {
-    "jcode"
+    storage::product_flavor().binary_stem()
 }
 
 pub fn binary_name() -> &'static str {
     if cfg!(windows) {
-        "jcode.exe"
+        match storage::product_flavor() {
+            storage::ProductFlavor::Jcode => "jcode.exe",
+            storage::ProductFlavor::JcodePlus => "jcode-plus.exe",
+        }
     } else {
         binary_stem()
     }
@@ -263,26 +266,28 @@ fn non_empty_env_path(name: &str) -> Option<PathBuf> {
 
 /// Directory for the single launcher path users execute from PATH.
 ///
-/// Defaults to `~/.local/bin` on Unix, `%LOCALAPPDATA%\jcode\bin` on Windows.
+/// Defaults to `~/.local/bin` on Unix, `%LOCALAPPDATA%/<flavor>/bin` on Windows.
 /// Overridable with `JCODE_INSTALL_DIR`.
 pub fn launcher_dir() -> Result<PathBuf> {
     if let Some(custom) = non_empty_env_path("JCODE_INSTALL_DIR") {
         return Ok(custom);
     }
 
-    if let Some(sandbox_home) = non_empty_env_path("JCODE_HOME") {
+    let home_env = storage::product_flavor().env_home_var();
+    if let Some(sandbox_home) = non_empty_env_path(home_env) {
         return Ok(sandbox_home.join("bin"));
     }
 
     #[cfg(windows)]
     {
+        let app_dir = storage::product_flavor().config_dir_name();
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            return Ok(PathBuf::from(local).join("jcode").join("bin"));
+            return Ok(PathBuf::from(local).join(app_dir).join("bin"));
         }
         Ok(home_dir()?
             .join("AppData")
             .join("Local")
-            .join("jcode")
+            .join(app_dir)
             .join("bin"))
     }
     #[cfg(not(windows))]

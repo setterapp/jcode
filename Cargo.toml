@@ -76,6 +76,10 @@ name = "jcode"
 path = "src/main.rs"
 
 [[bin]]
+name = "jcode-plus"
+path = "src/main_jcode_plus.rs"
+
+[[bin]]
 name = "test_api"
 path = "src/bin/test_api.rs"
 

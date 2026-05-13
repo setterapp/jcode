@@ -20,7 +20,10 @@ pub async fn run() -> Result<()> {
     startup_profile::mark("logging_init");
     logging::cleanup_old_logs();
     startup_profile::mark("log_cleanup");
-    logging::info("jcode starting");
+    logging::info(&format!(
+        "{} starting",
+        crate::storage::product_flavor().binary_stem()
+    ));
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 

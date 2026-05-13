@@ -3,6 +3,79 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProductFlavor {
+    Jcode,
+    JcodePlus,
+}
+
+impl ProductFlavor {
+    pub fn binary_stem(self) -> &'static str {
+        match self {
+            Self::Jcode => "jcode",
+            Self::JcodePlus => "jcode-plus",
+        }
+    }
+
+    pub fn home_dir_name(self) -> &'static str {
+        match self {
+            Self::Jcode => ".jcode",
+            Self::JcodePlus => ".jcode-plus",
+        }
+    }
+
+    pub fn config_dir_name(self) -> &'static str {
+        match self {
+            Self::Jcode => "jcode",
+            Self::JcodePlus => "jcode-plus",
+        }
+    }
+
+    pub fn runtime_prefix(self) -> &'static str {
+        self.binary_stem()
+    }
+
+    pub fn env_home_var(self) -> &'static str {
+        match self {
+            Self::Jcode => "JCODE_HOME",
+            Self::JcodePlus => "JCODE_PLUS_HOME",
+        }
+    }
+
+    pub fn env_runtime_var(self) -> &'static str {
+        match self {
+            Self::Jcode => "JCODE_RUNTIME_DIR",
+            Self::JcodePlus => "JCODE_PLUS_RUNTIME_DIR",
+        }
+    }
+}
+
+pub fn product_flavor() -> ProductFlavor {
+    static PRODUCT_FLAVOR: OnceLock<ProductFlavor> = OnceLock::new();
+    *PRODUCT_FLAVOR.get_or_init(detect_product_flavor)
+}
+
+fn detect_product_flavor() -> ProductFlavor {
+    if let Ok(value) = std::env::var("JCODE_PRODUCT_FLAVOR") {
+        let trimmed = value.trim().to_ascii_lowercase();
+        if trimmed == "jcode-plus" || trimmed == "plus" {
+            return ProductFlavor::JcodePlus;
+        }
+    }
+
+    let exe_name = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()));
+    if let Some(exe_name) = exe_name
+        && exe_name.contains("jcode-plus")
+    {
+        return ProductFlavor::JcodePlus;
+    }
+
+    ProductFlavor::Jcode
+}
 
 /// Platform-aware runtime directory for sockets and ephemeral state.
 ///
@@ -12,7 +85,13 @@ use std::path::{Path, PathBuf};
 ///
 /// Can be overridden with `$JCODE_RUNTIME_DIR`.
 pub fn runtime_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("JCODE_RUNTIME_DIR") {
+    let flavor = product_flavor();
+    if let Ok(dir) = std::env::var(flavor.env_runtime_var()) {
+        return PathBuf::from(dir);
+    }
+    if flavor == ProductFlavor::Jcode
+        && let Ok(dir) = std::env::var("JCODE_RUNTIME_DIR")
+    {
         return PathBuf::from(dir);
     }
     if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
@@ -31,7 +110,11 @@ pub fn runtime_dir() -> PathBuf {
 }
 
 fn fallback_runtime_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("jcode-{}", runtime_user_discriminator()))
+    std::env::temp_dir().join(format!(
+        "{}-{}",
+        product_flavor().runtime_prefix(),
+        runtime_user_discriminator()
+    ))
 }
 
 #[cfg(unix)]
@@ -65,12 +148,18 @@ fn ensure_private_runtime_dir(path: &Path) {
 }
 
 pub fn jcode_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("JCODE_HOME") {
+    let flavor = product_flavor();
+    if let Ok(path) = std::env::var(flavor.env_home_var()) {
+        return Ok(PathBuf::from(path));
+    }
+    if flavor == ProductFlavor::Jcode
+        && let Ok(path) = std::env::var("JCODE_HOME")
+    {
         return Ok(PathBuf::from(path));
     }
 
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("No home directory"))?;
-    Ok(home.join(".jcode"))
+    Ok(home.join(flavor.home_dir_name()))
 }
 
 pub fn logs_dir() -> Result<PathBuf> {
@@ -84,13 +173,23 @@ pub fn logs_dir() -> Result<PathBuf> {
 /// `$JCODE_HOME/config/jcode` so self-dev/tests do not leak into the user's
 /// real config directory.
 pub fn app_config_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("JCODE_HOME") {
-        return Ok(PathBuf::from(path).join("config").join("jcode"));
+    let flavor = product_flavor();
+    if let Ok(path) = std::env::var(flavor.env_home_var()) {
+        return Ok(PathBuf::from(path)
+            .join("config")
+            .join(flavor.config_dir_name()));
+    }
+    if flavor == ProductFlavor::Jcode
+        && let Ok(path) = std::env::var("JCODE_HOME")
+    {
+        return Ok(PathBuf::from(path)
+            .join("config")
+            .join(flavor.config_dir_name()));
     }
 
     let config_dir =
         dirs::config_dir().ok_or_else(|| anyhow::anyhow!("No config directory found"))?;
-    Ok(config_dir.join("jcode"))
+    Ok(config_dir.join(flavor.config_dir_name()))
 }
 
 /// Resolve a path under the user's home directory, but sandbox it under
@@ -121,7 +220,7 @@ pub fn user_home_path(relative: impl AsRef<Path>) -> Result<PathBuf> {
 /// filesystems, but it narrows exposure on typical Unix systems.
 pub fn harden_user_config_permissions() {
     if let Some(config_dir) = dirs::config_dir() {
-        let jcode_config_dir = config_dir.join("jcode");
+        let jcode_config_dir = config_dir.join(product_flavor().config_dir_name());
         if jcode_config_dir.exists() {
             let _ = jcode_core::fs::set_directory_permissions_owner_only(&jcode_config_dir);
         }
@@ -385,6 +484,26 @@ pub fn append_json_line_fast<T: Serialize + ?Sized>(path: &Path, value: &T) -> R
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn product_flavor_descriptors_are_stable() {
+        assert_eq!(ProductFlavor::Jcode.binary_stem(), "jcode");
+        assert_eq!(ProductFlavor::Jcode.home_dir_name(), ".jcode");
+        assert_eq!(ProductFlavor::Jcode.config_dir_name(), "jcode");
+        assert_eq!(ProductFlavor::Jcode.runtime_prefix(), "jcode");
+        assert_eq!(ProductFlavor::Jcode.env_home_var(), "JCODE_HOME");
+        assert_eq!(ProductFlavor::Jcode.env_runtime_var(), "JCODE_RUNTIME_DIR");
+
+        assert_eq!(ProductFlavor::JcodePlus.binary_stem(), "jcode-plus");
+        assert_eq!(ProductFlavor::JcodePlus.home_dir_name(), ".jcode-plus");
+        assert_eq!(ProductFlavor::JcodePlus.config_dir_name(), "jcode-plus");
+        assert_eq!(ProductFlavor::JcodePlus.runtime_prefix(), "jcode-plus");
+        assert_eq!(ProductFlavor::JcodePlus.env_home_var(), "JCODE_PLUS_HOME");
+        assert_eq!(
+            ProductFlavor::JcodePlus.env_runtime_var(),
+            "JCODE_PLUS_RUNTIME_DIR"
+        );
+    }
 
     #[test]
     fn write_text_atomic_creates_file_and_preserves_bak_on_overwrite() {

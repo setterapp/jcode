@@ -8,7 +8,10 @@ pub fn socket_path() -> PathBuf {
     if let Ok(custom) = std::env::var("JCODE_SOCKET") {
         return PathBuf::from(custom);
     }
-    crate::storage::runtime_dir().join("jcode.sock")
+    crate::storage::runtime_dir().join(format!(
+        "{}.sock",
+        crate::storage::product_flavor().runtime_prefix()
+    ))
 }
 
 /// Debug socket path for testing/introspection
@@ -85,7 +88,10 @@ pub async fn has_live_listener(path: &std::path::Path) -> bool {
 
 #[cfg(unix)]
 pub(super) fn daemon_lock_path() -> PathBuf {
-    crate::storage::runtime_dir().join("jcode-daemon.lock")
+    crate::storage::runtime_dir().join(format!(
+        "{}-daemon.lock",
+        crate::storage::product_flavor().runtime_prefix()
+    ))
 }
 
 #[cfg(unix)]

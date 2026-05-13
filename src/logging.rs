@@ -151,7 +151,11 @@ impl Logger {
 
         // Use date-based log file
         let date = Local::now().format("%Y-%m-%d");
-        let path = log_dir.join(format!("jcode-{}.log", date));
+        let path = log_dir.join(format!(
+            "{}-{}.log",
+            crate::storage::product_flavor().binary_stem(),
+            date
+        ));
 
         let file = OpenOptions::new()
             .create(true)
