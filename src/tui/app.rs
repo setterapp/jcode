@@ -732,6 +732,8 @@ pub struct App {
     tool_output_scan_index: usize,
     // Current session ID (from server in remote mode)
     remote_session_id: Option<String>,
+    // Shared protocol reducer state for the next-generation client core.
+    client_core_state: jcode_client_core::ClientCoreState,
     // All sessions on the server (remote mode only)
     remote_sessions: Vec<String>,
     remote_side_pane_images: Vec<crate::session::RenderedImage>,

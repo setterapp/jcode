@@ -3456,6 +3456,7 @@ dependencies = [
  "jcode-background-types",
  "jcode-batch-types",
  "jcode-build-support",
+ "jcode-client-core",
  "jcode-compaction-core",
  "jcode-config-types",
  "jcode-core",

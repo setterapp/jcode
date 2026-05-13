@@ -224,6 +224,7 @@ jcode-task-types = { path = "crates/jcode-task-types" }
 jcode-tool-core = { path = "crates/jcode-tool-core" }
 jcode-tool-types = { path = "crates/jcode-tool-types" }
 jcode-side-panel-types = { path = "crates/jcode-side-panel-types" }
+jcode-client-core = { path = "crates/jcode-client-core" }
 
 # Archive extraction (for auto-update)
 flate2 = "1"
