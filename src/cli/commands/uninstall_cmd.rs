@@ -1,13 +1,14 @@
 use anyhow::Result;
 
 pub fn run_uninstall(force: bool, dry_run: bool) -> Result<()> {
+    let flavor = crate::storage::product_flavor();
     let paths_to_remove = vec![
-        dirs::config_dir().map(|d| d.join("jcode")),
-        dirs::data_dir().map(|d| d.join("jcode")),
-        dirs::cache_dir().map(|d| d.join("jcode")),
+        dirs::config_dir().map(|d| d.join(flavor.config_dir_name())),
+        dirs::data_dir().map(|d| d.join(flavor.config_dir_name())),
+        dirs::cache_dir().map(|d| d.join(flavor.config_dir_name())),
     ];
 
-    println!("jcode-plus uninstall");
+    println!("{} uninstall", crate::product::command_name());
     println!("Paths to remove:");
 
     for path in &paths_to_remove {

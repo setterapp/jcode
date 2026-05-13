@@ -9,9 +9,10 @@ pub struct PluginManager {
 
 impl PluginManager {
     pub fn new() -> Result<Self> {
+        let flavor = crate::storage::product_flavor();
         let config_dir = dirs::config_dir()
-            .map(|d| d.join("jcode"))
-            .unwrap_or_else(|| PathBuf::from("~/.config/jcode"));
+            .map(|d| d.join(flavor.config_dir_name()))
+            .unwrap_or_else(|| PathBuf::from(format!("~/.config/{}", flavor.config_dir_name())));
         std::fs::create_dir_all(&config_dir)?;
 
         Ok(Self {

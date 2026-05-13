@@ -37,9 +37,13 @@ impl SessionStats {
 }
 
 pub fn load_stats() -> Result<SessionStats> {
+    let flavor = crate::storage::product_flavor();
     let data_dir = dirs::data_dir()
-        .map(|d| d.join("jcode"))
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share/jcode"));
+        .map(|d| d.join(flavor.config_dir_name()))
+        .unwrap_or_else(|| std::path::PathBuf::from(format!(
+            "~/.local/share/{}",
+            flavor.config_dir_name()
+        )));
 
     let stats_file = data_dir.join("usage_stats.json");
     if !stats_file.exists() {
@@ -52,9 +56,13 @@ pub fn load_stats() -> Result<SessionStats> {
 }
 
 pub fn save_stats(stats: &SessionStats) -> Result<()> {
+    let flavor = crate::storage::product_flavor();
     let data_dir = dirs::data_dir()
-        .map(|d| d.join("jcode"))
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share/jcode"));
+        .map(|d| d.join(flavor.config_dir_name()))
+        .unwrap_or_else(|| std::path::PathBuf::from(format!(
+            "~/.local/share/{}",
+            flavor.config_dir_name()
+        )));
     std::fs::create_dir_all(&data_dir)?;
 
     let stats_file = data_dir.join("usage_stats.json");
