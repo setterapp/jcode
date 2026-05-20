@@ -318,6 +318,19 @@ pub struct NamedProviderConfig {
     pub allow_provider_pinning: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<NamedProviderModelConfig>,
+    /// Extra HTTP headers sent on every request to this provider. Keys are
+    /// case-insensitive per the HTTP spec; values are interpolated as-is.
+    /// Example (TOML):
+    ///   [providers.my-gateway.headers]
+    ///   "X-My-Tenant" = "acme"
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    /// Model IDs to hide from the picker / autocompletion. Useful when a
+    /// gateway exposes hundreds of models but only a handful are relevant.
+    /// Glob patterns are NOT expanded — exact match against the canonical
+    /// model id only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_blacklist: Vec<String>,
 }
 
 impl Default for NamedProviderConfig {
@@ -337,6 +350,8 @@ impl Default for NamedProviderConfig {
             model_catalog: false,
             allow_provider_pinning: false,
             models: Vec::new(),
+            headers: BTreeMap::new(),
+            model_blacklist: Vec::new(),
         }
     }
 }
@@ -575,7 +590,7 @@ impl Default for DisplayConfig {
         Self {
             diff_mode: DiffDisplayMode::default(),
             show_diffs: None,
-            pin_images: true,
+            pin_images: false,
             queue_mode: false,
             auto_server_reload: true,
             mouse_capture: true,
