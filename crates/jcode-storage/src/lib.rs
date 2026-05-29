@@ -378,7 +378,12 @@ fn write_bytes_inner(path: &Path, bytes: &[u8], durable: bool) -> Result<()> {
             file.sync_all()?;
         }
 
-        if path.exists() {
+        // Keep a `.bak` only for durable writes (configs, credentials, memory)
+        // where corruption recovery matters. Fast writes (frequent session
+        // snapshots) skip it: the tmp→path rename is already atomic against
+        // partial writes, and the `.bak` rename was both a per-write I/O cost
+        // and a source of unbounded `.bak` accumulation in ~/.jc/sessions.
+        if durable && path.exists() {
             let bak_path = path.with_extension("bak");
             let _ = std::fs::rename(path, &bak_path);
         }

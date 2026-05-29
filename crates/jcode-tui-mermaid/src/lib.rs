@@ -261,6 +261,19 @@ static RENDER_ERRORS: LazyLock<Mutex<HashMap<u64, String>>> =
 /// Prevent unbounded growth when a long session contains many unique diagrams.
 const ACTIVE_DIAGRAMS_MAX: usize = 128;
 
+/// Insert into a u64-keyed diagram cache, evicting one entry first when already
+/// at `ACTIVE_DIAGRAMS_MAX`, so a long session with many unique diagrams can't
+/// grow `LAST_RENDER` / `RENDER_ERRORS` without bound. Eviction is harmless —
+/// it only forces a cheap re-render or re-record on next use.
+pub(crate) fn bounded_diagram_insert<V>(map: &mut HashMap<u64, V>, hash: u64, value: V) {
+    if map.len() >= ACTIVE_DIAGRAMS_MAX && !map.contains_key(&hash) {
+        if let Some(&victim) = map.keys().next() {
+            map.remove(&victim);
+        }
+    }
+    map.insert(hash, value);
+}
+
 /// State for a rendered image
 struct ImageState {
     protocol: StatefulProtocol,
@@ -1144,7 +1157,19 @@ pub fn evict_old_cache() {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().is_some_and(|e| e == "png")
+        // Mermaid renders are .png, but inline images (register_inline_image)
+        // are cached as <hash>_inline.{jpg,jpeg,webp,gif}. Evict all image
+        // formats so the size/age cap is actually enforced for inline images.
+        let is_cached_image = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| {
+                matches!(
+                    e.to_ascii_lowercase().as_str(),
+                    "png" | "jpg" | "jpeg" | "webp" | "gif"
+                )
+            });
+        if is_cached_image
             && let Ok(meta) = entry.metadata()
         {
             let size = meta.len();

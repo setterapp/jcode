@@ -307,14 +307,18 @@ impl MemoryManager {
 
     pub fn save_project(&self, store: &MemoryStore) -> Result<()> {
         if let Some(path) = self.project_memory_path()? {
-            storage::write_json(&path, store)?;
+            // Fast (non-durable) write: memory saves happen on the agent-turn
+            // hot path (remember/reinforce); the atomic tmp→rename still
+            // prevents partial writes, and at worst a power loss drops only the
+            // last mutation. Avoids per-save fsync latency.
+            storage::write_json_fast(&path, store)?;
         }
         Ok(())
     }
 
     pub fn save_global(&self, store: &MemoryStore) -> Result<()> {
         let path = self.global_memory_path()?;
-        storage::write_json(&path, store)
+        storage::write_json_fast(&path, store)
     }
 
     /// Similarity threshold for storage-layer dedup.

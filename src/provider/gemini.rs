@@ -744,13 +744,24 @@ fn is_vpc_sc_error(err: &anyhow::Error) -> bool {
 }
 
 fn gemini_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
+    // Reuse connections + allow HTTP/2 (ALPN) so multi-turn Gemini sessions
+    // avoid a fresh TCP+TLS handshake per request (~1 RTT TCP + 1-2 RTT TLS
+    // saved). The old behavior (HTTP/1.1 only, no pooling) is available via
+    // JCODE_GEMINI_HTTP1=1 in case an endpoint mishandles HTTP/2.
+    let force_http1 = std::env::var("JCODE_GEMINI_HTTP1")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
+    let builder = reqwest::Client::builder()
         .user_agent("jcode/1.0 (gemini)")
-        .http1_only()
         .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(90))
-        .pool_max_idle_per_host(0)
-        .tcp_keepalive(Some(Duration::from_secs(30)))
+        .tcp_keepalive(Some(Duration::from_secs(30)));
+    let builder = if force_http1 {
+        builder.http1_only().pool_max_idle_per_host(0)
+    } else {
+        builder.pool_max_idle_per_host(16)
+    };
+    builder
         .build()
         .unwrap_or_else(|_| crate::provider::shared_http_client())
 }

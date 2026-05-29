@@ -7,6 +7,34 @@ use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use std::collections::HashSet;
 
+/// Remove stale `.bak` files from the sessions directory. Session snapshots use
+/// fast (non-durable) writes that no longer maintain a `.bak`, so any `.bak`
+/// here is leftover from older builds — delete ones older than a day to keep
+/// ~/.jc/sessions from accumulating dead backups. Best-effort; ignores errors.
+pub fn prune_stale_session_baks() {
+    let Ok(sessions_dir) = storage::jcode_dir().map(|d| d.join("sessions")) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&sessions_dir) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    let max_age = std::time::Duration::from_secs(24 * 60 * 60);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "bak").unwrap_or(false)
+            && let Ok(meta) = entry.metadata()
+            && let Ok(modified) = meta.modified()
+            && now
+                .duration_since(modified)
+                .map(|age| age > max_age)
+                .unwrap_or(false)
+        {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 /// Recover crashed sessions from the most recent crash window (text-only).
 /// Returns new recovery session IDs (most recent first).
 pub fn recover_crashed_sessions() -> Result<Vec<String>> {
@@ -14,6 +42,9 @@ pub fn recover_crashed_sessions() -> Result<Vec<String>> {
     if !sessions_dir.exists() {
         return Ok(Vec::new());
     }
+
+    // Opportunistic cleanup of dead `.bak` files (see fn docs above).
+    prune_stale_session_baks();
 
     let mut sessions: Vec<Session> = Vec::new();
     for entry in std::fs::read_dir(&sessions_dir)? {

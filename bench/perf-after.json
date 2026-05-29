@@ -1,0 +1,40 @@
+{
+  "label": "after",
+  "timestamp": "2026-05-29 23:44:21 +0200",
+  "binary": "/private/tmp/jc-bench/jc-after",
+  "binary_info": {
+    "size_bytes": 49191888,
+    "size_mb": 46.91
+  },
+  "git": {
+    "commit": "6eead7a7af9ef6a9cdc45a6627bb5c68642aabfa",
+    "short_commit": "6eead7a7",
+    "branch": "feat/auto-refresh-models-and-provider-strip",
+    "dirty": true
+  },
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "help_timing_ms": {
+    "runs": 7,
+    "min_ms": 6.793,
+    "median_ms": 7.776,
+    "p95_ms": 7.827,
+    "max_ms": 8.462,
+    "mean_ms": 7.684,
+    "stdev_ms": 0.501
+  },
+  "version_timing_ms": {
+    "runs": 7,
+    "min_ms": 7.293,
+    "median_ms": 7.387,
+    "p95_ms": 7.628,
+    "max_ms": 7.697,
+    "mean_ms": 7.465,
+    "stdev_ms": 0.168
+  },
+  "server_idle": {
+    "error": "server failed to bind socket within 10s"
+  }
+}

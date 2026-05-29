@@ -37,16 +37,34 @@ impl McpHandle {
             pending.insert(id, tx);
         }
 
-        let msg = serde_json::to_string(&request)? + "\n";
-        self.writer_tx
-            .send(msg)
-            .await
-            .context("Failed to send request")?;
+        // 60s — Supabase MCP handshake can stretch past 30s when its API
+        // is under load; jcode-plus standalone connects all configured MCP
+        // servers serially at startup so a single slow handshake should not
+        // block the entire init.
+        let send_and_wait = async {
+            let msg = serde_json::to_string(&request)? + "\n";
+            self.writer_tx
+                .send(msg)
+                .await
+                .context("Failed to send request")?;
+            let response = tokio::time::timeout(std::time::Duration::from_secs(60), rx)
+                .await
+                .context("Request timeout")?
+                .context("Channel closed")?;
+            Ok::<JsonRpcResponse, anyhow::Error>(response)
+        }
+        .await;
 
-        let response = tokio::time::timeout(std::time::Duration::from_secs(30), rx)
-            .await
-            .context("Request timeout")?
-            .context("Channel closed")?;
+        // On any failure (send error, timeout, channel closed) drop the
+        // dangling `pending` entry so it doesn't leak its oneshot sender for
+        // the process lifetime. Idempotent: the reader removes on success.
+        let response = match send_and_wait {
+            Ok(response) => response,
+            Err(err) => {
+                self.pending.lock().await.remove(&id);
+                return Err(err);
+            }
+        };
 
         if let Some(err) = &response.error {
             anyhow::bail!("MCP error {}: {}", err.code, err.message);

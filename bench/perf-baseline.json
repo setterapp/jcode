@@ -1,0 +1,40 @@
+{
+  "label": "baseline",
+  "timestamp": "2026-05-29 23:34:24 +0200",
+  "binary": "/private/tmp/jc-bench/jc-baseline",
+  "binary_info": {
+    "size_bytes": 49174880,
+    "size_mb": 46.9
+  },
+  "git": {
+    "commit": "6eead7a7af9ef6a9cdc45a6627bb5c68642aabfa",
+    "short_commit": "6eead7a7",
+    "branch": "feat/auto-refresh-models-and-provider-strip",
+    "dirty": true
+  },
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "help_timing_ms": {
+    "runs": 7,
+    "min_ms": 6.795,
+    "median_ms": 7.62,
+    "p95_ms": 8.071,
+    "max_ms": 26.433,
+    "mean_ms": 10.121,
+    "stdev_ms": 7.207
+  },
+  "version_timing_ms": {
+    "runs": 7,
+    "min_ms": 6.444,
+    "median_ms": 6.892,
+    "p95_ms": 7.521,
+    "max_ms": 7.569,
+    "mean_ms": 7.035,
+    "stdev_ms": 0.406
+  },
+  "server_idle": {
+    "error": "server failed to bind socket within 10s"
+  }
+}

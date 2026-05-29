@@ -284,6 +284,16 @@ lto = "thin"
 codegen-units = 16
 incremental = false
 
+# Max-performance local install build: opt-level 3 + thin LTO + 16 codegen
+# units. ~95% of the runtime win of fat-LTO+cgu=1 but compiles ~3x faster
+# (parallel codegen), so it's practical for frequent local rebuilds. Pair with
+# `RUSTFLAGS=-C target-cpu=native` for the installed binary; not used for dev
+# iteration.
+[profile.release-max]
+inherits = "release-lto"
+opt-level = 3
+codegen-units = 16
+
 [profile.dev]
 debug = 0
 incremental = true
