@@ -11,7 +11,7 @@ use super::client_comm::{
 };
 use super::client_disconnect_cleanup::cleanup_client_connection;
 use super::client_session::{
-    handle_clear_session, handle_reload, handle_resume_session, handle_subscribe,
+    handle_clear_session, handle_reload, handle_reset, handle_resume_session, handle_subscribe,
 };
 use super::client_state::{handle_get_compacted_history, handle_get_history, handle_get_state};
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
@@ -30,8 +30,8 @@ use super::comm_sync::{
 use super::provider_control::{
     handle_cycle_model, handle_notify_auth_changed, handle_refresh_models,
     handle_set_compaction_mode, handle_set_model, handle_set_premium_mode,
-    handle_set_reasoning_effort, handle_set_service_tier, handle_set_transport,
-    handle_switch_anthropic_account, handle_switch_openai_account,
+    handle_set_profile, handle_set_reasoning_effort, handle_set_service_tier,
+    handle_set_transport, handle_switch_anthropic_account, handle_switch_openai_account,
     try_available_models_updated_event,
 };
 use super::{
@@ -1683,6 +1683,10 @@ pub(super) async fn handle_client(
                 handle_reload(id, &agent, &swarm_members, &client_event_tx).await;
             }
 
+            Request::Reset { id } => {
+                handle_reset(id, &agent, &swarm_members, &client_event_tx).await;
+            }
+
             Request::ResumeSession {
                 id,
                 session_id,
@@ -1752,6 +1756,10 @@ pub(super) async fn handle_client(
 
             Request::SetModel { id, model } => {
                 handle_set_model(id, model, &agent, &client_event_tx).await;
+            }
+
+            Request::SetProfile { id, name } => {
+                handle_set_profile(id, name, &agent, &client_event_tx).await;
             }
 
             Request::SetSubagentModel { id, model } => {

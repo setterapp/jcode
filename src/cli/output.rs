@@ -16,12 +16,14 @@ pub fn quiet_enabled() -> bool {
 
 pub fn stderr_info(message: impl AsRef<str>) {
     if !quiet_enabled() {
-        eprintln!("{}", message.as_ref());
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "{}", message.as_ref());
     }
 }
 
 pub fn stderr_blank_line() {
     if !quiet_enabled() {
-        eprintln!();
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr());
     }
 }

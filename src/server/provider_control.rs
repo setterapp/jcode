@@ -245,6 +245,68 @@ pub(super) async fn handle_set_model(
     }
 }
 
+pub(super) async fn handle_set_profile(
+    id: u64,
+    name: String,
+    agent: &Arc<Mutex<Agent>>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    let cfg = crate::config::config();
+    let Some(profile) = cfg.profiles.get(&name).cloned() else {
+        let _ = client_event_tx.send(ServerEvent::ProfileChanged {
+            id,
+            name,
+            model: None,
+            error: Some("Profile not found. Check [profiles.name] in config.toml.".to_string()),
+        });
+        return;
+    };
+    drop(cfg);
+
+    // Apply API key override via env var — AnthropicProvider reads it on every request.
+    if let Some(ref api_key) = profile.api_key {
+        crate::env::set_var("ANTHROPIC_API_KEY", api_key);
+        crate::logging::info(&format!("set_profile: applied api_key for profile '{}'", name));
+    }
+
+    // Switch model if the profile specifies one.
+    if let Some(ref model) = profile.model {
+        let result = {
+            let mut agent_guard = agent.lock().await;
+            let result = agent_guard.set_model(model);
+            if result.is_ok() {
+                agent_guard.reset_provider_session();
+            }
+            result.map(|_| (agent_guard.provider_model(), agent_guard.provider_name()))
+        };
+        match result {
+            Ok((updated_model, _pname)) => {
+                let _ = client_event_tx.send(ServerEvent::ProfileChanged {
+                    id,
+                    name,
+                    model: Some(updated_model),
+                    error: None,
+                });
+            }
+            Err(e) => {
+                let _ = client_event_tx.send(ServerEvent::ProfileChanged {
+                    id,
+                    name,
+                    model: None,
+                    error: Some(format!("Profile applied but model switch failed: {}", e)),
+                });
+            }
+        }
+    } else {
+        let _ = client_event_tx.send(ServerEvent::ProfileChanged {
+            id,
+            name,
+            model: None,
+            error: None,
+        });
+    }
+}
+
 pub(super) async fn handle_refresh_models(
     id: u64,
     provider: &Arc<dyn Provider>,

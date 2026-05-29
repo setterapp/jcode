@@ -6,6 +6,7 @@ mod batch;
 mod bg;
 mod browser;
 mod codesearch;
+mod tool_search;
 mod communicate;
 mod conversation_search;
 mod debug_socket;
@@ -38,7 +39,7 @@ use crate::provider::Provider;
 use crate::skill::SkillRegistry;
 use anyhow::Result;
 use jcode_message_types::ToolDefinition;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -55,6 +56,10 @@ pub struct Registry {
     tools: Arc<RwLock<HashMap<String, Arc<dyn Tool>>>>,
     skills: Arc<RwLock<SkillRegistry>>,
     compaction: Arc<RwLock<CompactionManager>>,
+    /// Cached unfiltered tool definitions. Rebuilt only when `tools` mutates
+    /// (e.g. `enable_memory_test_mode`). Each turn would otherwise repeatedly
+    /// call every `tool.to_definition()`, re-allocating each JSON schema.
+    definitions_cache: Arc<RwLock<Option<Arc<Vec<ToolDefinition>>>>>,
 }
 
 impl Clone for Registry {
@@ -65,6 +70,9 @@ impl Clone for Registry {
             // Each clone gets a fresh CompactionManager to prevent parallel
             // subagents from corrupting each other's message history
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
+            // Sharing the cache between clones is safe: schemas don't depend
+            // on the subagent identity, only on the underlying tool set.
+            definitions_cache: self.definitions_cache.clone(),
         }
     }
 }
@@ -101,6 +109,7 @@ impl Registry {
             tools: Arc::new(RwLock::new(HashMap::new())),
             skills: Arc::new(RwLock::new(SkillRegistry::default())),
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
+            definitions_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -165,6 +174,12 @@ impl Registry {
                 "codesearch",
                 codesearch::CodeSearchTool::new,
             );
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "tool_search",
+                tool_search::ToolSearchTool::new,
+            );
             Self::insert_tool_timed(&mut m, &mut timings, "invalid", invalid::InvalidTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "lsp", lsp::LspTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "todo", todo::TodoTool::new);
@@ -222,6 +237,7 @@ impl Registry {
             tools: Arc::new(RwLock::new(HashMap::new())),
             skills: skills.clone(),
             compaction: compaction.clone(),
+            definitions_cache: Arc::new(RwLock::new(None)),
         };
         let registry_struct_ms = registry_struct_start.elapsed().as_millis();
 
@@ -269,25 +285,49 @@ impl Registry {
         &self,
         allowed_tools: Option<&HashSet<String>>,
     ) -> Vec<ToolDefinition> {
-        let tools = self.tools.read().await;
-        let mut defs: Vec<ToolDefinition> = tools
-            .iter()
-            .filter(|(name, _)| allowed_tools.map(|set| set.contains(*name)).unwrap_or(true))
-            .map(|(name, tool)| {
-                let mut def = tool.to_definition();
-                // Use registry key as the tool name (important for MCP tools where
-                // the registry key is "mcp__server__tool" but Tool::name() returns
-                // just the raw tool name)
-                if def.name != *name {
-                    def.name = name.clone();
-                }
-                def
-            })
-            .collect();
+        let cached = {
+            let cache = self.definitions_cache.read().await;
+            cache.clone()
+        };
+        let all_defs: Arc<Vec<ToolDefinition>> = if let Some(cached) = cached {
+            cached
+        } else {
+            let tools = self.tools.read().await;
+            let mut defs: Vec<ToolDefinition> = tools
+                .iter()
+                .map(|(name, tool)| {
+                    let mut def = tool.to_definition();
+                    // Use registry key as the tool name (important for MCP tools where
+                    // the registry key is "mcp__server__tool" but Tool::name() returns
+                    // just the raw tool name)
+                    if def.name != *name {
+                        def.name = name.clone();
+                    }
+                    def
+                })
+                .collect();
+            // Sort by name for deterministic ordering - critical for prompt cache hits
+            defs.sort_by(|a, b| a.name.cmp(&b.name));
+            let arc = Arc::new(defs);
+            *self.definitions_cache.write().await = Some(arc.clone());
+            arc
+        };
 
-        // Sort by name for deterministic ordering - critical for prompt cache hits
-        defs.sort_by(|a, b| a.name.cmp(&b.name));
-        defs
+        match allowed_tools {
+            Some(set) => all_defs
+                .iter()
+                .filter(|def| set.contains(&def.name))
+                .cloned()
+                .collect(),
+            None => all_defs.as_ref().clone(),
+        }
+    }
+
+    /// Invalidate the cached unfiltered tool definitions. Callers MUST invoke
+    /// this whenever they mutate the underlying tools map so the next call to
+    /// `definitions()` rebuilds with fresh schemas.
+    pub async fn invalidate_definitions_cache(&self) {
+        *self.definitions_cache.write().await = None;
     }
 
     pub async fn tool_names(&self) -> Vec<String> {
@@ -305,6 +345,8 @@ impl Registry {
             "memory".to_string(),
             Arc::new(memory::MemoryTool::new_test()) as Arc<dyn Tool>,
         );
+        drop(tools);
+        *self.definitions_cache.write().await = None;
 
         crate::logging::info("Memory test mode enabled - using isolated storage");
     }
@@ -328,7 +370,28 @@ impl Registry {
             "file_glob" => "glob",
             "file_grep" => "grep",
             "todoread" | "todowrite" | "todo_read" | "todo_write" => "todo",
+            "ToolSearch" | "toolsearch" => "tool_search",
+            "Skill" | "skill" => "skill_manage",
+            "Memory" => "memory",
+            "WebFetch" | "web_fetch" => "webfetch",
+            "WebSearch" | "web_search" => "websearch",
             other => other,
+        }
+    }
+
+    /// Transform tool input when the API-facing schema differs from the internal one.
+    /// The public `Skill` tool exposes `{skill, args}`; internal `skill_manage` expects
+    /// `{action, name}`. Models often confuse the two — translate transparently.
+    fn transform_input(name: &str, input: Value) -> Value {
+        match name {
+            "Skill" | "skill" => {
+                if let Some(skill_name) = input.get("skill").and_then(|v| v.as_str()) {
+                    json!({ "action": "load", "name": skill_name })
+                } else {
+                    input
+                }
+            }
+            _ => input,
         }
     }
 
@@ -356,6 +419,9 @@ impl Registry {
 
         // Drop the lock before executing
         drop(tools);
+
+        // Translate API-facing input shape to internal one (e.g. Skill {skill} -> skill_manage {action,name})
+        let input = Self::transform_input(name, input);
 
         let started_at = std::time::Instant::now();
         let result = tool.execute(input.clone(), ctx).await;

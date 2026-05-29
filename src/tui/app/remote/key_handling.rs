@@ -616,7 +616,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if code == KeyCode::Enter && modifiers.contains(KeyModifiers::SHIFT) {
+    if code == KeyCode::Enter && modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
         input::insert_input_text(app, "\n");
         app.follow_chat_bottom_for_typing();
         return Ok(());
@@ -774,6 +774,37 @@ async fn handle_remote_key_internal(
                 if trimmed == "/server-reload" {
                     app.append_reload_message("Reloading server...");
                     remote.reload().await?;
+                    return Ok(());
+                }
+
+                if trimmed == "/reset" {
+                    app.append_reload_message("Resetting server...");
+                    remote.reset().await?;
+                    let session_id = app
+                        .remote_session_id
+                        .clone()
+                        .unwrap_or_else(|| crate::id::new_id("ses"));
+                    app.save_input_for_reload(&session_id);
+                    app.reload_requested = Some(session_id);
+                    app.should_quit = true;
+                    return Ok(());
+                }
+
+                if trimmed == "/provider" || trimmed.starts_with("/provider ") {
+                    let arg = trimmed.strip_prefix("/provider").unwrap_or("").trim().to_string();
+                    if arg.is_empty() {
+                        let cfg = crate::config::config();
+                        if cfg.profiles.is_empty() {
+                            app.set_status_notice("No profiles configured. Add [profiles.name] to config.toml.");
+                        } else {
+                            let names: Vec<String> = cfg.profiles.keys().cloned().collect();
+                            let list = names.iter().map(|n| format!("○ {}", n)).collect::<Vec<_>>().join("  ");
+                            app.set_status_notice(format!("Profiles: {}  — use /provider <name> to switch", list));
+                        }
+                    } else {
+                        remote.set_profile(arg).await?;
+                    }
+                    input::clear_input_for_escape(app);
                     return Ok(());
                 }
 

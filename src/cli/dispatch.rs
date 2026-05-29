@@ -447,6 +447,24 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
 async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("run_main_none_branch");
 
+    // Standalone is now the default for the `jc` binary — Claude-Code-style
+    // single-process launch with no shared daemon, no Unix socket, no
+    // rebuild/symlink dance. Pass `--server-mode` to opt into the legacy
+    // client/server flow (e.g. for multi-terminal session sharing).
+    let standalone = args.standalone || !args.server_mode;
+    if standalone {
+        startup_profile::mark("standalone_dispatch");
+        // provider_profile is already applied as env vars in `run_main` before
+        // we get here, so init_provider_and_registry picks it up — we just
+        // pass the provider choice + explicit model.
+        return tui_launch::run_tui_standalone(
+            args.resume,
+            args.provider,
+            args.model,
+        )
+        .await;
+    }
+
     let explicit_provider_or_model = args.provider != ProviderChoice::Auto
         || args.model.is_some()
         || args.provider_profile.is_some();

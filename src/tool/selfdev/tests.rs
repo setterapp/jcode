@@ -305,7 +305,7 @@ async fn test_action_queues_command_in_test_mode() {
 
 #[tokio::test]
 async fn do_reload_returns_after_ack_in_direct_mode() {
-    let request_id = server::send_reload_signal("direct-hash".to_string(), None, true);
+    let request_id = server::send_reload_signal("direct-hash".to_string(), None, true, false);
     let waiter = tokio::spawn({
         let request_id = request_id.clone();
         async move { server::wait_for_reload_ack(&request_id, std::time::Duration::from_secs(1)).await }

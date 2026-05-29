@@ -16,6 +16,8 @@ pub mod openai;
 pub(crate) mod openai_request;
 pub mod openrouter;
 pub mod pricing;
+pub mod models_dev;
+pub mod rate_limit_headers;
 mod route_builders;
 mod routing;
 mod selection;

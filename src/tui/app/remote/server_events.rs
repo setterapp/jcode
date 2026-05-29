@@ -384,15 +384,14 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             remote.clear_pending();
             remote.reset_call_output_tokens_seen();
+            // Non-retryable auto-poke errors (auth, billing, quota, schema
+            // failures) skip retry entirely and stop the loop. Transient
+            // connectivity blips are NOT in this set; they fall through to
+            // the standard retry path below so a brief DNS/network hiccup
+            // does not permanently kill an in-progress poke loop.
             if app.auto_poke_incomplete_todos
                 && crate::tui::app::commands::is_non_retryable_auto_poke_error(&message)
             {
-                if app.schedule_pending_remote_retry_with_limit(
-                    "⚠ Remote request failed with a likely non-retryable error.",
-                    2,
-                ) {
-                    return false;
-                }
                 crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(app, &message);
                 return false;
             }

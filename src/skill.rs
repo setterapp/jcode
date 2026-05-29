@@ -14,8 +14,14 @@ pub struct Skill {
     pub name: String,
     pub description: String,
     pub allowed_tools: Option<Vec<String>>,
+    pub always_on: bool,
     pub content: String,
     pub path: PathBuf,
+    /// Optional glob patterns from frontmatter `paths:`. When non-empty, the
+    /// skill is only "active" if the current working directory or any file
+    /// inside it matches one of these patterns. Mirrors Claude Code's
+    /// conditional skill activation.
+    pub paths: Vec<String>,
     search_text: String,
 }
 
@@ -25,6 +31,42 @@ struct SkillFrontmatter {
     description: String,
     #[serde(rename = "allowed-tools")]
     allowed_tools: Option<String>,
+    #[serde(rename = "always_on", default)]
+    always_on: bool,
+    /// Optional `paths:` list of glob patterns. Parsed flexibly: either an
+    /// inline comma-separated string OR a YAML array.
+    #[serde(default, deserialize_with = "deserialize_paths")]
+    paths: Vec<String>,
+}
+
+fn deserialize_paths<'de, D>(de: D) -> std::result::Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value = serde_yaml::Value::deserialize(de)?;
+    match value {
+        serde_yaml::Value::Null => Ok(Vec::new()),
+        serde_yaml::Value::String(s) => Ok(s
+            .split(',')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect()),
+        serde_yaml::Value::Sequence(seq) => seq
+            .into_iter()
+            .map(|v| match v {
+                serde_yaml::Value::String(s) => Ok(s),
+                other => Err(D::Error::custom(format!(
+                    "expected string in paths list, got {:?}",
+                    other
+                ))),
+            })
+            .collect(),
+        other => Err(D::Error::custom(format!(
+            "expected string or list for paths, got {:?}",
+            other
+        ))),
+    }
 }
 
 /// Registry of available skills
@@ -279,6 +321,8 @@ impl SkillRegistry {
             name,
             description,
             allowed_tools,
+            always_on,
+            paths,
         } = frontmatter;
 
         let allowed_tools =
@@ -289,8 +333,10 @@ impl SkillRegistry {
             name,
             description,
             allowed_tools,
+            always_on,
             content: body,
             path: path.to_path_buf(),
+            paths,
             search_text,
         })
     }
@@ -324,6 +370,41 @@ impl SkillRegistry {
     /// List all available skills
     pub fn list(&self) -> Vec<&Skill> {
         self.skills.values().collect()
+    }
+
+    /// Get the first always_on skill name, if any
+    pub fn always_on_skill(&self) -> Option<&str> {
+        self.skills
+            .values()
+            .find(|s| s.always_on)
+            .map(|s| s.name.as_str())
+    }
+
+    /// Get all always_on skill names
+    pub fn always_on_skills(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self
+            .skills
+            .values()
+            .filter(|s| s.always_on)
+            .map(|s| s.name.as_str())
+            .collect();
+        names.sort(); // deterministic order
+        names
+    }
+
+    /// Get combined prompt content for all always_on skills
+    pub fn always_on_prompt(&self) -> Option<String> {
+        let mut parts: Vec<String> = self
+            .skills
+            .values()
+            .filter(|s| s.always_on)
+            .map(|s| s.get_prompt().to_string())
+            .collect();
+        if parts.is_empty() {
+            return None;
+        }
+        parts.sort(); // deterministic order
+        Some(parts.join("\n\n---\n\n"))
     }
 
     /// Reload a specific skill by name
@@ -418,6 +499,27 @@ impl SkillRegistry {
 }
 
 impl Skill {
+    /// Returns true if this skill should activate for the given working
+    /// directory. Unconditional skills (no `paths:`) always match; otherwise
+    /// any glob in `paths` matched against the CWD path itself counts as a hit.
+    /// Globs use `glob::Pattern` semantics (`**`, `*`, `?`).
+    pub fn matches_working_dir(&self, working_dir: &Path) -> bool {
+        if self.paths.is_empty() {
+            return true;
+        }
+        let cwd_str = working_dir.to_string_lossy();
+        self.paths.iter().any(|p| match glob::Pattern::new(p) {
+            Ok(pat) => pat.matches(cwd_str.as_ref()),
+            Err(err) => {
+                crate::logging::info(&format!(
+                    "skill {}: invalid glob pattern {:?}: {}",
+                    self.name, p, err
+                ));
+                false
+            }
+        })
+    }
+
     /// Get the full prompt content for this skill
     pub fn get_prompt(&self) -> String {
         format!(
@@ -492,8 +594,10 @@ mod tests {
             name: name.to_string(),
             description: description.to_string(),
             allowed_tools: None,
+            always_on: false,
             content: content.to_string(),
             path: PathBuf::from(format!("/tmp/{name}/SKILL.md")),
+            paths: Vec::new(),
             search_text: build_skill_search_text(name, description, content),
         }
     }

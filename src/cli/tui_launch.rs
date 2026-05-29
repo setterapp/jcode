@@ -120,6 +120,81 @@ pub async fn run_client() -> Result<()> {
     Ok(())
 }
 
+/// Single-process entry point. No daemon, no Unix socket, no rebuild/symlink
+/// dance: the provider and tool registry live in-process and the TUI calls
+/// `App::run` instead of `App::run_remote`. Matches Claude Code's CLI feel —
+/// `jcode-plus --standalone` should "just work" from a fresh `cargo install`.
+pub async fn run_tui_standalone(
+    resume_session: Option<String>,
+    provider_choice: super::provider_init::ProviderChoice,
+    model: Option<String>,
+) -> Result<()> {
+    startup_profile::mark("tui_standalone_enter");
+
+    if resume_session.is_some() {
+        logging::warn(
+            "--standalone --resume is not yet supported. Starting a fresh standalone session.",
+        );
+        eprintln!(
+            "warning: --resume is ignored in --standalone mode (not implemented yet); starting a fresh session."
+        );
+    }
+
+    let (provider, registry) = super::provider_init::init_provider_and_registry(
+        &provider_choice,
+        model.as_deref(),
+    )
+    .await?;
+    startup_profile::mark("standalone_provider_ready");
+
+    registry.register_ambient_tools().await;
+
+    let safety = std::sync::Arc::new(crate::safety::SafetySystem::new());
+    crate::tool::ambient::init_safety_system(safety);
+
+    let (mut terminal, tui_runtime) = init_tui_runtime()?;
+    spawn_session_signal_watchers();
+
+    crate::process_title::set_client_generic_title(false);
+    let _ = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::SetTitle(crate::product::command_name())
+    );
+
+    let mut app = tui::App::new(provider, registry);
+
+    // MCP servers (Notion, Supabase, etc.) can take 10+s to handshake. We
+    // can't block here — while awaited, the tty is in raw + mouse mode but
+    // nothing is reading stdin, so the user's mouse events stream into the
+    // input buffer as raw SGR escapes (e.g. `[<35;203;5M…`). `init_mcp_
+    // background` registers the MCP management tool synchronously and fires
+    // the connect work onto a tokio task that publishes a bus event once it
+    // finishes, so `app.run` starts immediately and the input is responsive.
+    app.init_mcp_background().await;
+
+    startup_profile::mark("standalone_app_ready");
+    startup_profile::report_to_log();
+
+    let result = app.run(terminal).await;
+    let run_result = result?;
+
+    cleanup_tui_runtime_for_run_result(&tui_runtime, &run_result, false);
+
+    if let Some(code) = run_result.exit_code {
+        std::process::exit(code);
+    }
+
+    execute_requested_action(&run_result)?;
+
+    if !has_requested_action(&run_result)
+        && let Some(ref session_id) = run_result.session_id
+    {
+        print_session_resume_hint(session_id);
+    }
+
+    Ok(())
+}
+
 pub async fn run_tui_client(
     resume_session: Option<String>,
     startup_hints: Option<setup_hints::StartupHints>,
@@ -169,10 +244,6 @@ pub async fn run_tui_client(
     startup_profile::mark("terminal_title");
 
     let mut app = tui::App::new_for_remote_with_options(resume_session.clone(), fresh_spawn);
-    // jcode-plus: auto-open session picker for opencode-like startup
-    if resume_session.is_none() {
-        app.open_session_picker();
-    }
     if should_show_server_spawning(server_spawning).await {
         app.set_server_spawning();
     }

@@ -328,7 +328,7 @@ fn inline_key_env_name(profile_name: &str) -> String {
 
 pub fn apply_named_provider_profile_env(profile_name: &str) -> anyhow::Result<String> {
     let config = crate::config::config();
-    apply_named_provider_profile_env_from_config(profile_name, config)
+    apply_named_provider_profile_env_from_config(profile_name, &**config)
 }
 
 pub fn apply_named_provider_profile_env_from_config(

@@ -326,6 +326,7 @@ async fn test_context_guard_small_output_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        definitions_cache: Arc::new(RwLock::new(None)),
     };
 
     let output = ToolOutput::new("small output");
@@ -340,6 +341,7 @@ async fn test_context_guard_truncates_huge_single_output() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        definitions_cache: Arc::new(RwLock::new(None)),
     };
 
     // 30% of 1000 = 300 tokens = 1200 chars max for a single output
@@ -368,6 +370,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        definitions_cache: Arc::new(RwLock::new(None)),
     };
 
     // Even a modest output should get truncated when context is 95% full
@@ -386,6 +389,7 @@ async fn test_context_guard_zero_budget_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        definitions_cache: Arc::new(RwLock::new(None)),
     };
 
     let output = ToolOutput::new("x".repeat(100_000));

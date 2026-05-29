@@ -60,6 +60,8 @@ pub fn anthropic_map_tool_name_for_oauth(name: &str) -> String {
         "skill_manage" => "Skill",
         "memory" => "Memory",
         "tool_search" => "ToolSearch",
+        "webfetch" => "WebFetch",
+        "websearch" => "WebSearch",
         _ => name,
     }
     .to_string()
@@ -78,6 +80,8 @@ pub fn anthropic_map_tool_name_from_oauth(name: &str) -> String {
         "Skill" => "skill_manage",
         "ToolSearch" => "tool_search",
         "Memory" => "memory",
+        "WebFetch" => "webfetch",
+        "WebSearch" => "websearch",
         _ => name,
     }
     .to_string()

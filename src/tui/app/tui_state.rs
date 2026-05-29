@@ -486,6 +486,10 @@ impl crate::tui::TuiState for App {
         self.remote_total_tokens
     }
 
+    fn active_profile(&self) -> Option<String> {
+        self.client_core_state.session_meta.active_profile.clone()
+    }
+
     fn is_remote_mode(&self) -> bool {
         self.is_remote
     }
@@ -798,6 +802,30 @@ impl crate::tui::TuiState for App {
 
     fn context_limit(&self) -> Option<usize> {
         Some(self.context_limit as usize)
+    }
+
+    fn context_used_percent(&self) -> f64 {
+        // Remote sessions report the server's per-turn token totals through
+        // `remote_total_tokens`; local sessions track them via streaming +
+        // last-turn fields. Try both before falling back to the char-based
+        // approximation in the trait default so the bar reflects real usage
+        // in either mode.
+        if let Some((input, _)) = self.remote_total_tokens
+            && self.context_limit > 0
+        {
+            return ((input as f64 / self.context_limit as f64) * 100.0)
+                .clamp(0.0, 100.0);
+        }
+        let local = self.context_usage_percent();
+        if local > 0.0 {
+            return local.clamp(0.0, 100.0);
+        }
+        // Trait default: fall back to char-estimated tokens.
+        let tokens = self.context_info().estimated_tokens();
+        if self.context_limit == 0 {
+            return 0.0;
+        }
+        ((tokens as f64 / self.context_limit as f64) * 100.0).clamp(0.0, 100.0)
     }
 
     fn client_update_available(&self) -> bool {
@@ -1123,6 +1151,16 @@ impl crate::tui::TuiState for App {
 
     fn auth_status(&self) -> crate::auth::AuthStatus {
         crate::auth::AuthStatus::check_fast()
+    }
+
+    fn last_turn_cost_delta(&self) -> Option<f32> {
+        const DISPLAY_WINDOW: std::time::Duration = std::time::Duration::from_secs(5);
+        let at = self.last_turn_cost_at?;
+        if self.last_turn_cost_delta > 0.0 && at.elapsed() <= DISPLAY_WINDOW {
+            Some(self.last_turn_cost_delta)
+        } else {
+            None
+        }
     }
 
     fn diagram_mode(&self) -> crate::config::DiagramDisplayMode {

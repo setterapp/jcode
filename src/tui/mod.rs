@@ -30,6 +30,10 @@ pub use jcode_tui_workspace::workspace_map;
 pub use jcode_tui_workspace::workspace_map_widget;
 
 pub use app::{App, CopyBadgeUiState, ProcessingStatus, RunResult};
+/// Public re-export of the in-process frame drawer so non-TUI callers
+/// (e.g. the standalone launcher) can paint a single frame before handing
+/// the terminal to `App::run`.
+pub use ui::draw as draw_frame;
 pub use generated_image::{
     generated_image_side_panel_markdown, generated_image_side_panel_page_id,
     write_generated_image_side_panel_page,
@@ -172,6 +176,10 @@ pub trait TuiState {
     fn connected_clients(&self) -> Option<usize>;
     /// Short-lived notice shown in the status line (e.g., model switch, toggle diff)
     fn status_notice(&self) -> Option<String>;
+    /// Active provider profile name (if set via /provider)
+    fn active_profile(&self) -> Option<String> {
+        None
+    }
     /// First-use experimental feature warning for the currently active operation.
     fn active_experimental_feature_notice(&self) -> Option<String> {
         None
@@ -200,6 +208,19 @@ pub trait TuiState {
     fn context_info(&self) -> crate::prompt::ContextInfo;
     /// Context window limit in tokens (if known)
     fn context_limit(&self) -> Option<usize>;
+    /// Context usage as 0..=100. Default approximates via
+    /// `context_info().estimated_tokens / context_limit`; the real `App`
+    /// overrides this with live streaming + last-turn input tokens so the
+    /// statusline matches the value the compaction layer sees.
+    fn context_used_percent(&self) -> f64 {
+        match self.context_limit() {
+            Some(limit) if limit > 0 => {
+                let tokens = self.context_info().estimated_tokens();
+                ((tokens as f64 / limit as f64) * 100.0).clamp(0.0, 100.0)
+            }
+            _ => 0.0,
+        }
+    }
     /// Whether a newer client binary is available
     fn client_update_available(&self) -> bool;
     /// Whether a newer server binary is available (remote mode)
@@ -227,6 +248,11 @@ pub trait TuiState {
     fn auth_status(&self) -> crate::auth::AuthStatus;
     /// Update cost calculation based on token usage (for API-key providers)
     fn update_cost(&mut self);
+    /// Cost added by the most recently completed turn, in USD, if still fresh
+    /// enough to display as a statusline badge (e.g. for ~5 seconds).
+    fn last_turn_cost_delta(&self) -> Option<f32> {
+        None
+    }
     /// Diagram display mode (none/margin/pinned)
     fn diagram_mode(&self) -> crate::config::DiagramDisplayMode;
     /// Whether the diagram pane is focused (pinned mode)

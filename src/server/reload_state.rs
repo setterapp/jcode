@@ -407,6 +407,7 @@ pub struct ReloadSignal {
     pub triggering_session: Option<String>,
     pub prefer_selfdev_binary: bool,
     pub request_id: String,
+    pub is_reset: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -505,14 +506,16 @@ pub fn send_reload_signal(
     hash: String,
     triggering_session: Option<String>,
     prefer_selfdev_binary: bool,
+    is_reset: bool,
 ) -> String {
     let request_id = crate::id::new_id("reload");
     crate::logging::info(&format!(
-        "send_reload_signal: request={} hash={} triggering_session={:?} prefer_selfdev_binary={} current_pid={}",
+        "send_reload_signal: request={} hash={} triggering_session={:?} prefer_selfdev_binary={} is_reset={} current_pid={}",
         request_id,
         hash,
         triggering_session,
         prefer_selfdev_binary,
+        is_reset,
         std::process::id()
     ));
     let (tx, _) = reload_signal();
@@ -521,6 +524,7 @@ pub fn send_reload_signal(
         triggering_session,
         prefer_selfdev_binary,
         request_id: request_id.clone(),
+        is_reset,
     }));
     request_id
 }

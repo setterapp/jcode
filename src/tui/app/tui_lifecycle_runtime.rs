@@ -161,6 +161,109 @@ impl App {
             .is_some_and(|mtime| mtime > startup_mtime)
     }
 
+    /// Fast-path MCP init for standalone mode. Registers the MCP management
+    /// tool immediately (so `/mcp` works) and fires the connection work off
+    /// onto a background task. The TUI starts drawing right away; once
+    /// connect_all() returns, a `BusEvent::McpServersUpdated` lands on the
+    /// bus and the run loop updates `mcp_server_names` + error display.
+    pub async fn init_mcp_background(&mut self) {
+        use crate::bus::{Bus, BusEvent, McpServersUpdated};
+
+        // Synchronous part: register the management tool + selfdev tools.
+        let mcp_tool = crate::tool::mcp::McpManagementTool::new(Arc::clone(&self.mcp_manager))
+            .with_registry(self.registry.clone());
+        self.registry
+            .register("mcp".to_string(), Arc::new(mcp_tool))
+            .await;
+        if self.session.is_canary {
+            self.registry.register_selfdev_tools().await;
+        }
+
+        let server_count = {
+            let manager = self.mcp_manager.read().await;
+            manager.config().servers.len()
+        };
+        if server_count == 0 {
+            return;
+        }
+        crate::logging::info(&format!(
+            "MCP: Found {} server(s) in config — connecting in background",
+            server_count
+        ));
+        // Immediate feedback so the user knows MCP is in flight even when
+        // a single slow server (e.g. Supabase) takes 30-60s to handshake.
+        self.set_status_notice(format!("mcp: connecting {} server(s)…", server_count));
+
+        // Per-server spawn so the fast servers (Notion ~0.3s) don't wait on
+        // the slow ones (Semble ~3.8s). Each spawned task connects ONE
+        // server, registers its tools to the live registry, then publishes
+        // an incremental `McpServersUpdated` bus event with the cumulative
+        // (connected, failed) view. The TUI updates and tool registry stay
+        // in sync turn-by-turn instead of after the slowest connect lands.
+        let server_configs: Vec<(String, crate::mcp::protocol::McpServerConfig)> = {
+            let manager = self.mcp_manager.read().await;
+            manager
+                .config()
+                .servers
+                .iter()
+                .map(|(n, c)| (n.clone(), c.clone()))
+                .collect()
+        };
+
+        let cumulative: Arc<tokio::sync::Mutex<(Vec<(String, usize)>, Vec<(String, String)>)>> =
+            Arc::new(tokio::sync::Mutex::new((Vec::new(), Vec::new())));
+
+        for (name, config) in server_configs {
+            let manager_arc = Arc::clone(&self.mcp_manager);
+            let registry_clone = self.registry.clone();
+            let cumulative = Arc::clone(&cumulative);
+            tokio::spawn(async move {
+                let connect_result = {
+                    let manager = manager_arc.write().await;
+                    manager.connect(&name, &config).await
+                };
+                match connect_result {
+                    Ok(()) => {
+                        let all_tools = {
+                            let manager = manager_arc.read().await;
+                            manager.all_tools().await
+                        };
+                        let tool_count = all_tools.iter().filter(|(s, _)| s == &name).count();
+
+                        // Refresh full MCP tool set on the registry — cheap
+                        // and ensures multi-server tool prefixes stay
+                        // consistent without per-server bookkeeping.
+                        let tools = crate::mcp::create_mcp_tools(manager_arc.clone()).await;
+                        for (n, tool) in tools {
+                            registry_clone.register(n, tool).await;
+                        }
+
+                        let snapshot = {
+                            let mut guard = cumulative.lock().await;
+                            guard.0.push((name.clone(), tool_count));
+                            McpServersUpdated {
+                                servers: guard.0.clone(),
+                                failures: guard.1.clone(),
+                            }
+                        };
+                        Bus::global().publish(BusEvent::McpServersUpdated(snapshot));
+                    }
+                    Err(err) => {
+                        let snapshot = {
+                            let mut guard = cumulative.lock().await;
+                            guard.1.push((name.clone(), err.to_string()));
+                            McpServersUpdated {
+                                servers: guard.0.clone(),
+                                failures: guard.1.clone(),
+                            }
+                        };
+                        Bus::global().publish(BusEvent::McpServersUpdated(snapshot));
+                    }
+                }
+            });
+        }
+    }
+
     /// Initialize MCP servers (call after construction)
     pub async fn init_mcp(&mut self) {
         // Always register the MCP management tool so agent can connect servers

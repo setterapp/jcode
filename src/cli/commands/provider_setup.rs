@@ -180,6 +180,8 @@ pub(crate) fn configure_provider_profile(
             context_window: options.context_window,
             input: Vec::new(),
         }],
+        headers: std::collections::BTreeMap::new(),
+        model_blacklist: Vec::new(),
     };
 
     let config_path = Config::path().ok_or_else(|| anyhow::anyhow!("No config path"))?;

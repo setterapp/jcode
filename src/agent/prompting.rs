@@ -78,10 +78,28 @@ impl Agent {
         }
 
         let skills = self.current_skills_snapshot();
-        let skill_prompt = self
-            .active_skill
-            .as_ref()
-            .and_then(|name| skills.get(name).map(|skill| skill.get_prompt().to_string()));
+        // Build skill prompt: always_on skills are always included.
+        // If a specific skill was explicitly invoked by the user (active_skill set
+        // to a non-always_on skill), include it on top of the always_on baseline.
+        let skill_prompt = {
+            let always_on_names: std::collections::HashSet<&str> =
+                skills.always_on_skills().into_iter().collect();
+            let always_on_content = skills.always_on_prompt();
+
+            match &self.active_skill {
+                Some(name) if !always_on_names.contains(name.as_str()) => {
+                    // Explicitly invoked non-always_on skill: show it plus always_on baseline
+                    let explicit =
+                        skills.get(name).map(|s| s.get_prompt().to_string());
+                    match (explicit, always_on_content) {
+                        (Some(e), Some(a)) => Some(format!("{e}\n\n---\n\n{a}")),
+                        (Some(e), None) => Some(e),
+                        (None, a) => a,
+                    }
+                }
+                _ => always_on_content,
+            }
+        };
 
         let available_skills: Vec<crate::prompt::SkillInfo> = self
             .current_skills_snapshot()

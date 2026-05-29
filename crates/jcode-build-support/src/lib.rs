@@ -222,8 +222,29 @@ pub fn install_binary_at_version(source: &std::path::Path, version: &str) -> Res
         std::fs::copy(source, &dest)?;
     }
     crate::platform_support::set_permissions_executable(&dest)?;
+    resign_adhoc_macos(&dest);
 
     Ok(dest)
+}
+
+/// macOS only: re-apply an ad-hoc signature so the kernel's signature
+/// cache does not mistake the new file for the previous binary at the
+/// same path. Without this the launcher gets SIGKILL'd by amfid the
+/// first time a freshly-installed dev build runs (S1282 / obs 7990).
+/// Best-effort: a failure is logged but does not abort the install.
+fn resign_adhoc_macos(_path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(_path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if !matches!(status, Ok(s) if s.success()) {
+            eprintln!("warning: codesign --force --sign - failed on {:?}", _path);
+        }
+    }
 }
 
 fn binary_source_metadata_path(binary: &Path) -> PathBuf {

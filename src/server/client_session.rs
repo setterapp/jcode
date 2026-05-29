@@ -614,7 +614,7 @@ pub(super) async fn handle_reload(
 
     let hash = env!("JCODE_GIT_HASH").to_string();
     let signal_request_id =
-        crate::server::send_reload_signal(hash, triggering_session.clone(), prefer_selfdev_binary);
+        crate::server::send_reload_signal(hash, triggering_session.clone(), prefer_selfdev_binary, false);
 
     crate::logging::info(&format!(
         "handle_reload: queued reload signal {} from remote client request {} (triggering_session={:?}, prefer_selfdev_binary={}, reload_notified_sessions={}, reload_notified_clients={})",
@@ -622,6 +622,59 @@ pub(super) async fn handle_reload(
         request_id,
         triggering_session,
         prefer_selfdev_binary,
+        live_sessions.len(),
+        delivered
+    ));
+
+    let _ = client_event_tx.send(ServerEvent::Done { id });
+}
+
+pub(super) async fn handle_reset(
+    id: u64,
+    agent: &Arc<Mutex<Agent>>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    let request_id = crate::id::new_id("reset");
+    mark_remote_reload_started(&request_id);
+
+    let triggering_session = {
+        let agent_guard = agent.lock().await;
+        Some(agent_guard.session_id().to_string())
+    };
+
+    let live_sessions = {
+        let members = swarm_members.read().await;
+        members
+            .iter()
+            .filter_map(|(session_id, member)| {
+                if member.event_txs.is_empty() { None } else { Some(session_id.clone()) }
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut delivered = 0;
+    for session_id in &live_sessions {
+        delivered += fanout_live_client_event(
+            swarm_members,
+            session_id,
+            ServerEvent::Reloading { new_socket: None },
+        )
+        .await;
+    }
+    if delivered == 0 {
+        let _ = client_event_tx.send(ServerEvent::Reloading { new_socket: None });
+    }
+
+    let hash = env!("JCODE_GIT_HASH").to_string();
+    let signal_request_id =
+        crate::server::send_reload_signal(hash, triggering_session.clone(), false, true);
+
+    crate::logging::info(&format!(
+        "handle_reset: queued reset signal {} from remote client request {} (triggering_session={:?}, notified_sessions={}, notified_clients={})",
+        signal_request_id,
+        request_id,
+        triggering_session,
         live_sessions.len(),
         delivered
     ));

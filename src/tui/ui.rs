@@ -98,10 +98,11 @@ mod prepare;
 pub(crate) mod tools_ui;
 #[path = "ui_transitions.rs"]
 mod transitions;
+#[path = "ui_status_bar.rs"]
+mod status_bar;
 #[path = "ui_viewport.rs"]
 mod viewport;
 
-#[cfg(test)]
 use box_utils::truncate_line_to_width;
 use box_utils::{
     line_plain_text, render_rounded_box, truncate_line_preserving_suffix_to_width,
@@ -1593,12 +1594,14 @@ fn ansi_line_from_stdout(stdout: &str, max_width: usize) -> Line<'static> {
         Err(_) => Line::raw(trimmed.to_string()),
     };
     // ratatui truncates oversized content automatically when rendered into a
-    // Paragraph, but we limit the visible char count up-front so wide-character
-    // scripts don't overflow into the next row in narrow terminals.
+    // Paragraph, but wide characters (emoji, CJK) cost 2 display columns each
+    // while ratatui's column-based truncation can leave a half-glyph on the
+    // right edge. Pre-truncate to the actual display width so the bar always
+    // ends cleanly even when the script emits emoji-heavy output.
     if max_width == 0 {
         return Line::raw("");
     }
-    line
+    truncate_line_to_width(&line, max_width)
 }
 
 fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
@@ -1917,21 +1920,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // When the bash script is active it already renders 5h/Weekly on the same line,
     // so showing a second dedicated row would create an unwanted two-line layout.
     let status_line_active = crate::config::config().status_line.is_active();
-    let usage_strip_height: u16 = if !show_donut
-        && !status_line_active
-        && widget_data.usage_info.as_ref().map(|u| {
-            use crate::tui::info_widget::UsageProvider;
-            match u.provider {
-                UsageProvider::Anthropic | UsageProvider::OpenAI => true,
-                UsageProvider::CostBased | UsageProvider::Copilot => u.available,
-                UsageProvider::None => false,
-            }
-        }).unwrap_or(false)
-    {
-        1
-    } else {
-        0
-    };
+    // Usage strip consolidated into status bar — always hidden here.
+    let usage_strip_height: u16 = 0;
     let fixed_height = 1
         + queued_height
         + notification_height
@@ -2264,9 +2254,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         animations::draw_idle_animation(frame, app, chunks[8]);
     }
 
-    // Bottom strip — when [status_line] hook is configured we render the user
-    // shell script's output (ANSI parsed). Otherwise we fall back to the
-    // built-in provider auth strip so the row is always meaningful.
+    // Bottom strip — status bar with model, context %, tokens, rate limits.
+    // When [status_line] hook is active, render its output instead.
     let strip_area = chunks[9];
     if strip_area.height > 0 && strip_area.width > 0 {
         let cfg = crate::config::config();
@@ -2281,12 +2270,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 strip_area,
             );
         } else {
-            let auth = app.auth_status();
-            let active_provider_label = cfg.provider.default_provider.as_deref();
-            let strip_line = header::build_provider_strip_line(
-                &auth,
+            let strip_line = status_bar::build_status_bar_line(
+                app,
+                &widget_data,
                 strip_area.width as usize,
-                active_provider_label,
             );
             frame.render_widget(
                 ratatui::widgets::Paragraph::new(strip_line)
@@ -2296,12 +2283,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         }
     }
 
-    // Draw info widget overlays (skip during idle animation - they look out of place)
-    // widget_data was already fetched earlier for the inline usage strip.
+    // Info widget overlays disabled — all info consolidated into status bar.
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;
-    if !widget_data.is_empty() && !show_donut {
+    if false && !widget_data.is_empty() && !show_donut {
         if let Some(ref mut capture) = debug_capture {
             capture.render_order.push("render_info_widgets".to_string());
         }

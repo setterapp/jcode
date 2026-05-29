@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 use tokio::sync::{RwLock, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -94,12 +96,27 @@ struct OAuthClientMetadata {
     email_address: Option<String>,
 }
 
+static OAUTH_META_CACHE: OnceLock<Mutex<Option<(SystemTime, OAuthClientMetadata)>>> =
+    OnceLock::new();
+
 fn load_official_claude_client_metadata() -> OAuthClientMetadata {
     let path = match crate::storage::user_home_path(".claude.json") {
         Ok(path) => path,
         Err(_) => return OAuthClientMetadata::default(),
     };
-    let content = match std::fs::read_to_string(path) {
+    let mtime = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+
+    let cache = OAUTH_META_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock()
+        && let Some((cached_mtime, cached)) = guard.as_ref()
+        && *cached_mtime == mtime
+    {
+        return cached.clone();
+    }
+
+    let content = match std::fs::read_to_string(&path) {
         Ok(content) => content,
         Err(_) => return OAuthClientMetadata::default(),
     };
@@ -108,7 +125,7 @@ fn load_official_claude_client_metadata() -> OAuthClientMetadata {
         Err(_) => return OAuthClientMetadata::default(),
     };
     let oauth = parsed.get("oauthAccount");
-    OAuthClientMetadata {
+    let meta = OAuthClientMetadata {
         device_id: parsed
             .get("userID")
             .and_then(Value::as_str)
@@ -125,7 +142,12 @@ fn load_official_claude_client_metadata() -> OAuthClientMetadata {
             .and_then(|v| v.get("emailAddress"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
+    };
+
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((mtime, meta.clone()));
     }
+    meta
 }
 
 fn oauth_request_metadata(session_id: &str) -> ApiMetadata {
@@ -844,6 +866,12 @@ impl AnthropicProvider {
                     cache_control: None,
                 },
                 ApiTool {
+                    name: "Memory".to_string(),
+                    description: "Store, recall, search, and manage persistent memories across sessions. Use action='recall' (with optional query) to retrieve facts. Use action='remember' with content to store. Use action='list' to see all stored memories. Always check memory before asking the user for context they may have provided in past sessions.".to_string(),
+                    input_schema: json!({"type":"object","properties":{"action":{"type":"string","enum":["remember","recall","search","list","forget","tag","link","related"]},"content":{"type":"string"},"category":{"type":"string","enum":["fact","preference","entity","correction"]},"query":{"type":"string"},"id":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}},"scope":{"type":"string","enum":["project","global","all"]},"limit":{"type":"integer"}},"required":["action"],"additionalProperties":true}),
+                    cache_control: None,
+                },
+                ApiTool {
                     name: "ScheduleWakeup".to_string(),
                     description: "Schedule when to resume work in /loop dynamic mode.".to_string(),
                     input_schema: json!({"type":"object","properties":{"delaySeconds":{"type":"number"},"reason":{"type":"string"},"prompt":{"type":"string"}},"required":["delaySeconds","reason","prompt"],"additionalProperties":false}),
@@ -861,6 +889,18 @@ impl AnthropicProvider {
                         "Fetches full schema definitions for deferred tools so they can be called."
                             .to_string(),
                     input_schema: json!({"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"number","default":5}},"required":["query","max_results"],"additionalProperties":false}),
+                    cache_control: None,
+                },
+                ApiTool {
+                    name: "WebFetch".to_string(),
+                    description: "Fetches content from a URL and returns it as text. Use for reading web pages, docs, or any HTTP(S) resource.".to_string(),
+                    input_schema: json!({"type":"object","properties":{"url":{"type":"string","description":"The URL to fetch."},"prompt":{"type":"string","description":"Optional: what to extract from the page."}},"required":["url"],"additionalProperties":false}),
+                    cache_control: None,
+                },
+                ApiTool {
+                    name: "WebSearch".to_string(),
+                    description: "Searches the web and returns ranked results (title, url, snippet). Use for current information, docs, or anything not in the local codebase.".to_string(),
+                    input_schema: json!({"type":"object","properties":{"query":{"type":"string","description":"The search query."},"num_results":{"type":"integer","description":"Max results (default 8)."}},"required":["query"],"additionalProperties":false}),
                     cache_control: None,
                 },
                 ApiTool {
@@ -1477,6 +1517,16 @@ async fn stream_response(
         anyhow::bail!("Anthropic API error ({}): {}", status, error_text);
     }
 
+    if is_oauth {
+        if let Some(update) =
+            crate::provider::rate_limit_headers::RateLimitUpdate::from_anthropic_headers(
+                response.headers(),
+            )
+        {
+            crate::usage::apply_anthropic_rate_limit_update(&update);
+        }
+    }
+
     let _ = tx
         .send(Ok(StreamEvent::ConnectionPhase {
             phase: ConnectionPhase::WaitingForResponse,
@@ -1492,19 +1542,43 @@ async fn stream_response(
     let mut cache_read_input_tokens: Option<u64> = None;
     let mut cache_creation_input_tokens: Option<u64> = None;
 
-    const SSE_CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+    let sse_chunk_timeout_secs: u64 = std::env::var("JCODE_SSE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    let sse_chunk_timeout = std::time::Duration::from_secs(sse_chunk_timeout_secs);
 
     loop {
-        let chunk = match tokio::time::timeout(SSE_CHUNK_TIMEOUT, stream.next()).await {
+        let chunk = match tokio::time::timeout(sse_chunk_timeout, stream.next()).await {
             Ok(Some(chunk_result)) => chunk_result.context("Error reading stream chunk")?,
             Ok(None) => break, // stream ended normally
             Err(_) => {
-                crate::logging::warn("Anthropic SSE stream timed out (no data for 180s)");
-                anyhow::bail!("Stream read timeout: no data received for 180 seconds");
+                crate::logging::warn(&format!(
+                    "Anthropic SSE stream timed out (no data for {}s)",
+                    sse_chunk_timeout_secs
+                ));
+                anyhow::bail!(
+                    "Stream read timeout: no data received for {} seconds",
+                    sse_chunk_timeout_secs
+                );
             }
         };
         let chunk_str = String::from_utf8_lossy(&chunk);
         buffer.push_str(&chunk_str);
+
+        // Prevent unbounded buffer growth from malformed SSE streams (Issue #137)
+        const MAX_SSE_BUFFER_SIZE: usize = 10 * 1024 * 1024;
+        if buffer.len() > MAX_SSE_BUFFER_SIZE {
+            if let Some(last_boundary) = buffer.rfind("\n\n") {
+                let remaining = buffer.split_off(last_boundary + 2);
+                buffer = remaining;
+            } else {
+                anyhow::bail!(
+                    "SSE buffer exceeded {} bytes without complete event boundary",
+                    MAX_SSE_BUFFER_SIZE
+                );
+            }
+        }
 
         // Process complete SSE events
         while let Some(event) = parse_sse_event(&mut buffer) {

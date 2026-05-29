@@ -18,24 +18,50 @@ pub async fn run() -> Result<()> {
 
     logging::init();
     startup_profile::mark("logging_init");
-    logging::cleanup_old_logs();
-    startup_profile::mark("log_cleanup");
     logging::info(&format!(
         "{} starting",
         crate::storage::product_flavor().binary_stem()
     ));
-    crate::platform::raise_nofile_limit_best_effort(8_192);
-    startup_profile::mark("nofile_limit");
 
-    storage::harden_user_config_permissions();
-    startup_profile::mark("perm_harden");
+    if concurrent_boot_enabled() {
+        // Fan out the disk-IO-heavy boot tasks. None of these depend on each
+        // other; doing them sequentially burns ~tens of ms on cold boots
+        // (log cleanup walks the log dir, perm hardening stats files,
+        // telemetry rewrites JSON, etc.).
+        let log_cleanup = std::thread::spawn(logging::cleanup_old_logs);
+        let perm_harden = std::thread::spawn(storage::harden_user_config_permissions);
+        let telemetry = std::thread::spawn(|| {
+            telemetry::record_install_if_first_run();
+            telemetry::record_upgrade_if_needed();
+        });
 
-    perf::init_background();
-    startup_profile::mark("perf_init");
+        crate::platform::raise_nofile_limit_best_effort(8_192);
+        startup_profile::mark("nofile_limit");
+        perf::init_background();
+        startup_profile::mark("perf_init");
 
-    telemetry::record_install_if_first_run();
-    telemetry::record_upgrade_if_needed();
-    startup_profile::mark("telemetry_check");
+        let _ = log_cleanup.join();
+        startup_profile::mark("log_cleanup");
+        let _ = perm_harden.join();
+        startup_profile::mark("perm_harden");
+        let _ = telemetry.join();
+        startup_profile::mark("telemetry_check");
+    } else {
+        logging::cleanup_old_logs();
+        startup_profile::mark("log_cleanup");
+        crate::platform::raise_nofile_limit_best_effort(8_192);
+        startup_profile::mark("nofile_limit");
+
+        storage::harden_user_config_permissions();
+        startup_profile::mark("perm_harden");
+
+        perf::init_background();
+        startup_profile::mark("perf_init");
+
+        telemetry::record_install_if_first_run();
+        telemetry::record_upgrade_if_needed();
+        startup_profile::mark("telemetry_check");
+    }
 
     let args = parse_and_prepare_args()?;
     spawn_background_update_check(&args);
@@ -133,6 +159,16 @@ fn spawn_background_update_check(args: &Args) {
             ));
         });
     }
+}
+
+/// Gate concurrent boot behind an env flag for one release so we can ship a
+/// safe default while measuring real-world cold-start impact. Flip the default
+/// to `true` once telemetry confirms no regressions.
+fn concurrent_boot_enabled() -> bool {
+    std::env::var("JCODE_CONCURRENT_BOOT")
+        .ok()
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
 }
 
 fn should_spawn_background_update_check(args: &Args) -> bool {

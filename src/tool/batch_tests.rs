@@ -109,6 +109,7 @@ fn test_schema_only_requires_tool() {
         compaction: std::sync::Arc::new(tokio::sync::RwLock::new(
             crate::compaction::CompactionManager::new(),
         )),
+        definitions_cache: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
     })
     .parameters_schema();
 

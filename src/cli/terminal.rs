@@ -21,6 +21,7 @@ pub fn get_current_session() -> Option<String> {
 pub fn install_panic_hook() {
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
+        force_restore_terminal();
         default_hook(info);
 
         if let Some(session_id) = get_current_session() {
@@ -71,28 +72,34 @@ pub fn show_crash_resume_hint() {
     let (id, name) = &crashed[0];
     let session_label = id::extract_session_name(id).unwrap_or(name.as_str());
 
+    use std::io::Write;
+    let mut err = std::io::stderr();
     if crashed.len() == 1 {
-        eprintln!(
+        let _ = writeln!(
+            err,
             "\x1b[33m💥 Session \x1b[1m{}\x1b[0m\x1b[33m crashed. Resume with:\x1b[0m  {}",
             session_label,
             crate::product::command_with(&format!("--resume {}", id))
         );
     } else {
-        eprintln!(
+        let _ = writeln!(
+            err,
             "\x1b[33m💥 {} sessions crashed recently. Most recent: \x1b[1m{}\x1b[0m",
             crashed.len(),
             session_label
         );
-        eprintln!(
+        let _ = writeln!(
+            err,
             "\x1b[33m   Resume with:\x1b[0m  {}",
             crate::product::command_with(&format!("--resume {}", id))
         );
-        eprintln!(
+        let _ = writeln!(
+            err,
             "\x1b[33m   List all:\x1b[0m     {}",
             crate::product::command_with("--resume")
         );
     }
-    eprintln!();
+    let _ = writeln!(err);
 }
 
 fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
@@ -150,20 +157,64 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeState)>
 
 pub fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
     if restore_terminal {
+        // Belt-and-suspenders: disable everything we may have enabled, even
+        // if individual toggles were never run, so the terminal returns to a
+        // clean state. Errors are swallowed because this also runs on crash.
         let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-        if state.focus_change {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
-        }
-        if state.mouse_capture {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-        }
-        if state.keyboard_enhanced {
-            tui::disable_keyboard_enhancement();
-        }
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        // `state.keyboard_enhanced` is true only when push succeeded, but pop
+        // is harmless if the stack is empty — keep it unconditional too.
+        let _ = state;
+        tui::disable_keyboard_enhancement();
+        write_tty_reset_sequences();
         ratatui::restore();
     }
 
     crate::tui::mermaid::clear_image_state();
+}
+
+/// Final fallback used by panic/signal paths and after `ratatui::restore`.
+/// Emits the literal escape sequences that the terminal needs to leave any
+/// app-cursor / app-keypad / bracketed-paste / mouse / kitty-keyboard mode
+/// it may still be in. Without this, exits that bypass the normal cleanup
+/// (panic in a worker thread, SIGTERM from the launcher, etc.) leave the
+/// terminal eating keystrokes or moving the cursor on its own.
+fn write_tty_reset_sequences() {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    // SGR reset, cursor visible, normal cursor keys (DECCKM off), normal
+    // keypad, default cursor shape, alt screen leave, all common mouse
+    // modes off, bracketed paste off, focus events off, kitty keyboard
+    // pop (loop a few times in case multiple were pushed).
+    let _ = out.write_all(
+        b"\x1b[0m\
+          \x1b[?25h\
+          \x1b[?1l\
+          \x1b>\
+          \x1b[ q\
+          \x1b[?2004l\
+          \x1b[?1004l\
+          \x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\
+          \x1b[<u\x1b[<u\x1b[<u",
+    );
+    let _ = out.flush();
+}
+
+/// Force the terminal back into cooked, no-app-mode state. Safe to call
+/// from panic hooks and signal handlers.
+fn force_restore_terminal() {
+    let _ = crossterm::terminal::disable_raw_mode();
+    let _ = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::DisableBracketedPaste,
+        crossterm::event::DisableFocusChange,
+        crossterm::event::DisableMouseCapture,
+        crossterm::terminal::LeaveAlternateScreen,
+        crossterm::cursor::Show,
+    );
+    tui::disable_keyboard_enhancement();
+    write_tty_reset_sequences();
 }
 
 pub fn cleanup_tui_runtime_for_run_result(
@@ -180,16 +231,20 @@ pub fn cleanup_tui_runtime_for_run_result(
 
 pub fn print_session_resume_hint(session_id: &str) {
     let session_name = id::extract_session_name(session_id).unwrap_or(session_id);
-    eprintln!();
-    eprintln!(
+    use std::io::Write;
+    let mut err = std::io::stderr();
+    let _ = writeln!(err);
+    let _ = writeln!(
+        err,
         "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
         session_name
     );
-    eprintln!(
+    let _ = writeln!(
+        err,
         "  {}",
         crate::product::command_with(&format!("--resume {}", session_id))
     );
-    eprintln!();
+    let _ = writeln!(err);
 }
 
 fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
@@ -246,12 +301,7 @@ fn signal_crash_reason(sig: i32) -> String {
 fn handle_termination_signal(sig: i32) -> ! {
     mark_current_session_crashed(signal_crash_reason(sig));
 
-    let _ = crossterm::terminal::disable_raw_mode();
-    let _ = crossterm::execute!(
-        std::io::stderr(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::cursor::Show
-    );
+    force_restore_terminal();
 
     if let Some(session_id) = get_current_session() {
         print_session_resume_hint(&session_id);

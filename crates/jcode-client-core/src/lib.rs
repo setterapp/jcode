@@ -14,6 +14,7 @@ pub struct SessionMetaState {
     pub connection_phase: Option<String>,
     pub status_detail: Option<String>,
     pub upstream_provider: Option<String>,
+    pub active_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -133,6 +134,31 @@ impl ClientCoreState {
             ServerEvent::Reloading { .. } => {
                 self.transcript.is_reloading = true;
             }
+            ServerEvent::ModelChanged { model, provider_name, error, .. } => {
+                if error.is_none() {
+                    self.session_meta.provider_model = Some(model.clone());
+                    if let Some(pname) = provider_name {
+                        self.session_meta.provider_name = Some(pname.clone());
+                    }
+                }
+            }
+            ServerEvent::ProfileChanged { name, model, error, .. } => {
+                if error.is_none() {
+                    self.session_meta.active_profile = Some(name.clone());
+                    if let Some(m) = model {
+                        self.session_meta.provider_model = Some(m.clone());
+                    }
+                }
+            }
+            ServerEvent::AvailableModelsUpdated { provider_name, provider_model, available_models, .. } => {
+                self.session_meta.available_models = available_models.clone();
+                if let Some(name) = provider_name {
+                    self.session_meta.provider_name = Some(name.clone());
+                }
+                if let Some(model) = provider_model {
+                    self.session_meta.provider_model = Some(model.clone());
+                }
+            }
             _ => {}
         }
     }
@@ -151,6 +177,12 @@ impl ClientCoreState {
             error: None,
         });
     }
+}
+
+/// Strips provider prefix from model names for display.
+/// e.g. "anthropic:claude-sonnet-4-6" → "claude-sonnet-4-6"
+pub fn strip_provider_prefix(model: &str) -> &str {
+    model.split_once(':').map(|(_, m)| m).unwrap_or(model)
 }
 
 #[cfg(test)]
@@ -338,5 +370,53 @@ mod tests {
 
         state.apply_event(&ServerEvent::Done { id: 9 });
         assert!(state.pending_stdin_request.is_none());
+    }
+
+    #[test]
+    fn reducer_updates_model_on_model_changed_success() {
+        let mut state = ClientCoreState::default();
+        state.apply_event(&ServerEvent::ModelChanged {
+            id: 1,
+            model: "claude-opus-4-7".to_string(),
+            provider_name: Some("anthropic".to_string()),
+            error: None,
+        });
+        assert_eq!(state.session_meta.provider_model.as_deref(), Some("claude-opus-4-7"));
+        assert_eq!(state.session_meta.provider_name.as_deref(), Some("anthropic"));
+    }
+
+    #[test]
+    fn reducer_ignores_model_changed_on_error() {
+        let mut state = ClientCoreState::default();
+        state.session_meta.provider_model = Some("original-model".to_string());
+        state.apply_event(&ServerEvent::ModelChanged {
+            id: 1,
+            model: "new-model".to_string(),
+            provider_name: None,
+            error: Some("Model switching not available".to_string()),
+        });
+        assert_eq!(state.session_meta.provider_model.as_deref(), Some("original-model"));
+    }
+
+    #[test]
+    fn reducer_updates_available_models_on_event() {
+        let mut state = ClientCoreState::default();
+        state.apply_event(&ServerEvent::AvailableModelsUpdated {
+            provider_name: Some("openai".to_string()),
+            provider_model: Some("gpt-5".to_string()),
+            available_models: vec!["gpt-5".to_string(), "gpt-4o".to_string()],
+            available_model_routes: Vec::new(),
+        });
+        assert_eq!(state.session_meta.available_models.len(), 2);
+        assert_eq!(state.session_meta.provider_name.as_deref(), Some("openai"));
+        assert_eq!(state.session_meta.provider_model.as_deref(), Some("gpt-5"));
+    }
+
+    #[test]
+    fn strip_provider_prefix_handles_prefixed_and_plain() {
+        assert_eq!(strip_provider_prefix("anthropic:claude-sonnet-4-6"), "claude-sonnet-4-6");
+        assert_eq!(strip_provider_prefix("claude-sonnet-4-6"), "claude-sonnet-4-6");
+        assert_eq!(strip_provider_prefix("openai:gpt-5"), "gpt-5");
+        assert_eq!(strip_provider_prefix(""), "");
     }
 }

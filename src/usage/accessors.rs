@@ -349,6 +349,77 @@ async fn fetch_usage_for_account(
     fetch_anthropic_usage_data(access_token, cache_key).await
 }
 
+/// Apply a header-derived Anthropic rate-limit update to the active usage cache.
+///
+/// Live header data is fresher than the 5-minute `/api/oauth/usage` poll, so
+/// fields present in `update` overwrite the cached values. Fields the headers
+/// didn't carry (e.g. `extra_usage_enabled`) are left intact.
+///
+/// Publishes `BusEvent::StatusLineUpdated` so the TUI repaints immediately.
+pub fn apply_anthropic_rate_limit_update(
+    update: &crate::provider::rate_limit_headers::RateLimitUpdate,
+) {
+    use crate::provider::rate_limit_headers::RateLimitProvider;
+    if update.provider != RateLimitProvider::Anthropic {
+        return;
+    }
+
+    let usage_cell = match USAGE.get() {
+        Some(cell) => cell.clone(),
+        None => {
+            // Active cell not yet initialized — spawn an init+apply so we don't drop the update.
+            if tokio::runtime::Handle::try_current().is_ok() {
+                let update = update.clone();
+                tokio::spawn(async move {
+                    let cell = get_usage().await;
+                    merge_anthropic_rate_limit_update(&cell, &update).await;
+                    crate::bus::Bus::global().publish(crate::bus::BusEvent::StatusLineUpdated);
+                });
+            }
+            return;
+        }
+    };
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        let update = update.clone();
+        tokio::spawn(async move {
+            merge_anthropic_rate_limit_update(&usage_cell, &update).await;
+            crate::bus::Bus::global().publish(crate::bus::BusEvent::StatusLineUpdated);
+        });
+    } else if let Ok(mut data) = usage_cell.try_write() {
+        merge_anthropic_into(&mut data, update);
+        crate::bus::Bus::global().publish(crate::bus::BusEvent::StatusLineUpdated);
+    }
+}
+
+async fn merge_anthropic_rate_limit_update(
+    cell: &Arc<RwLock<UsageData>>,
+    update: &crate::provider::rate_limit_headers::RateLimitUpdate,
+) {
+    let mut data = cell.write().await;
+    merge_anthropic_into(&mut data, update);
+}
+
+fn merge_anthropic_into(
+    data: &mut UsageData,
+    update: &crate::provider::rate_limit_headers::RateLimitUpdate,
+) {
+    if let Some(pct) = update.five_hour_used_pct {
+        data.five_hour = (pct as f32) / 100.0;
+    }
+    if let Some(iso) = &update.five_hour_resets_at_iso {
+        data.five_hour_resets_at = Some(iso.clone());
+    }
+    if let Some(pct) = update.seven_day_used_pct {
+        data.seven_day = (pct as f32) / 100.0;
+    }
+    if let Some(iso) = &update.seven_day_resets_at_iso {
+        data.seven_day_resets_at = Some(iso.clone());
+    }
+    data.fetched_at = Some(Instant::now());
+    data.last_error = None;
+}
+
 /// Get usage data synchronously (returns cached data, triggers refresh if stale)
 pub fn get_sync() -> UsageData {
     // Try to get cached data

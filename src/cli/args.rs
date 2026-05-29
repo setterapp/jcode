@@ -66,6 +66,17 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
 
+    /// Run jc standalone: no background daemon, no Unix socket, no rebuild
+    /// dance. This is the default behavior; the flag is kept for explicitness.
+    #[arg(long, global = true)]
+    pub(crate) standalone: bool,
+
+    /// Opt into the legacy client/server flow — spawn a background daemon
+    /// and connect over a Unix socket. Required for multi-terminal session
+    /// sharing and `/rebuild` hot-reload of a long-running server.
+    #[arg(long, global = true)]
+    pub(crate) server_mode: bool,
+
     /// Custom socket path for server/client communication
     #[arg(long, global = true)]
     pub(crate) socket: Option<String>,

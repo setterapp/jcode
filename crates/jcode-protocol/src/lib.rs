@@ -172,6 +172,10 @@ pub enum Request {
     #[serde(rename = "reload")]
     Reload { id: u64 },
 
+    /// Restart server using current binary and resume all sessions
+    #[serde(rename = "reset")]
+    Reset { id: u64 },
+
     /// Resume a specific session by ID
     #[serde(rename = "resume_session")]
     ResumeSession {
@@ -222,6 +226,10 @@ pub enum Request {
     /// Set the active model by name
     #[serde(rename = "set_model")]
     SetModel { id: u64, model: String },
+
+    /// Switch to a named provider profile (changes credentials + model)
+    #[serde(rename = "set_profile")]
+    SetProfile { id: u64, name: String },
 
     /// Set or clear the session-scoped subagent model preference.
     #[serde(rename = "set_subagent_model")]
@@ -989,6 +997,16 @@ pub enum ServerEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         provider_name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+
+    /// Active provider profile changed
+    #[serde(rename = "profile_changed")]
+    ProfileChanged {
+        id: u64,
+        name: String,
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
 
@@ -1868,6 +1886,7 @@ impl Request {
             Request::GetHistory { id } => *id,
             Request::GetCompactedHistory { id, .. } => *id,
             Request::Reload { id } => *id,
+            Request::Reset { id } => *id,
             Request::ResumeSession { id, .. } => *id,
             Request::NotifySession { id, .. } => *id,
             Request::Transcript { id, .. } => *id,
@@ -1875,6 +1894,7 @@ impl Request {
             Request::CycleModel { id, .. } => *id,
             Request::RefreshModels { id } => *id,
             Request::SetModel { id, .. } => *id,
+            Request::SetProfile { id, .. } => *id,
             Request::SetSubagentModel { id, .. } => *id,
             Request::RunSubagent { id, .. } => *id,
             Request::SetReasoningEffort { id, .. } => *id,

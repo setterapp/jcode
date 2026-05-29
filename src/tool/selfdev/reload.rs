@@ -320,7 +320,7 @@ impl SelfDevTool {
 
         // Signal the server via in-process channel (replaces filesystem-based rebuild-signal)
         let request_id =
-            server::send_reload_signal(hash.clone(), Some(session_id.to_string()), true);
+            server::send_reload_signal(hash.clone(), Some(session_id.to_string()), true, false);
         crate::logging::info(&format!(
             "selfdev reload: request={} session_id={} hash={} execution_mode={:?}",
             request_id, session_id, hash, execution_mode

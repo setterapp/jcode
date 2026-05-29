@@ -378,8 +378,9 @@ fn current_autojudge_model_override() -> Option<String> {
 }
 
 pub(super) fn autoreview_status_message(app: &App) -> String {
-    let default_enabled = crate::config::config().autoreview.enabled;
-    let config_model = crate::config::config().autoreview.model.as_deref();
+    let cfg = crate::config::config();
+    let default_enabled = cfg.autoreview.enabled;
+    let config_model = cfg.autoreview.model.as_deref();
     let model_line = match config_model {
         Some(model) => format!("Reviewer model override: `{}`", model),
         None => format!(
@@ -404,8 +405,9 @@ pub(super) fn autoreview_status_message(app: &App) -> String {
 }
 
 pub(super) fn autojudge_status_message(app: &App) -> String {
-    let default_enabled = crate::config::config().autojudge.enabled;
-    let config_model = crate::config::config().autojudge.model.as_deref();
+    let cfg = crate::config::config();
+    let default_enabled = cfg.autojudge.enabled;
+    let config_model = cfg.autojudge.model.as_deref();
     let model_line = match config_model {
         Some(model) => format!("Judge model override: `{}`", model),
         None => format!(

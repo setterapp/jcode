@@ -15,21 +15,21 @@ impl ProductFlavor {
     pub fn binary_stem(self) -> &'static str {
         match self {
             Self::Jcode => "jcode",
-            Self::JcodePlus => "jcode-plus",
+            Self::JcodePlus => "jc",
         }
     }
 
     pub fn home_dir_name(self) -> &'static str {
         match self {
             Self::Jcode => ".jcode",
-            Self::JcodePlus => ".jcode-plus",
+            Self::JcodePlus => ".jc",
         }
     }
 
     pub fn config_dir_name(self) -> &'static str {
         match self {
             Self::Jcode => "jcode",
-            Self::JcodePlus => "jcode-plus",
+            Self::JcodePlus => "jc",
         }
     }
 
@@ -40,14 +40,14 @@ impl ProductFlavor {
     pub fn env_home_var(self) -> &'static str {
         match self {
             Self::Jcode => "JCODE_HOME",
-            Self::JcodePlus => "JCODE_PLUS_HOME",
+            Self::JcodePlus => "JC_HOME",
         }
     }
 
     pub fn env_runtime_var(self) -> &'static str {
         match self {
             Self::Jcode => "JCODE_RUNTIME_DIR",
-            Self::JcodePlus => "JCODE_PLUS_RUNTIME_DIR",
+            Self::JcodePlus => "JC_RUNTIME_DIR",
         }
     }
 }
@@ -60,7 +60,7 @@ pub fn product_flavor() -> ProductFlavor {
 fn detect_product_flavor() -> ProductFlavor {
     if let Ok(value) = std::env::var("JCODE_PRODUCT_FLAVOR") {
         let trimmed = value.trim().to_ascii_lowercase();
-        if trimmed == "jcode-plus" || trimmed == "plus" {
+        if trimmed == "jc" || trimmed == "jcode-plus" || trimmed == "plus" {
             return ProductFlavor::JcodePlus;
         }
     }
@@ -68,10 +68,13 @@ fn detect_product_flavor() -> ProductFlavor {
     let exe_name = std::env::current_exe()
         .ok()
         .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()));
-    if let Some(exe_name) = exe_name
-        && exe_name.contains("jcode-plus")
-    {
-        return ProductFlavor::JcodePlus;
+    if let Some(exe_name) = exe_name {
+        // Match the new short-form `jc` binary as well as the legacy
+        // `jcode-plus` name so both installs resolve to the same data dir
+        // until the legacy binary is gone everywhere.
+        if exe_name == "jc" || exe_name.contains("jcode-plus") {
+            return ProductFlavor::JcodePlus;
+        }
     }
 
     ProductFlavor::Jcode

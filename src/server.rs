@@ -30,6 +30,7 @@ mod durable_state;
 mod headless;
 mod lifecycle;
 mod provider_control;
+mod config_watcher;
 mod reload;
 mod reload_recovery;
 mod reload_state;
@@ -911,6 +912,12 @@ impl Server {
                 signal_swarm_event_tx,
             )
             .await;
+        });
+
+        // Watch config dir for changes and reload config/MCP/skills on writes.
+        let watcher_mcp_pool = Arc::clone(&self.mcp_pool);
+        tokio::spawn(async move {
+            config_watcher::watch_config_files(watcher_mcp_pool).await;
         });
 
         // Log when we receive SIGTERM for debugging

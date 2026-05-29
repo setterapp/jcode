@@ -25,8 +25,11 @@ struct SkillInput {
     #[serde(default = "default_action")]
     action: String,
     /// Skill name (required for load, reload, read)
-    #[serde(default)]
+    #[serde(default, alias = "skill")]
     name: Option<String>,
+    /// Optional arguments / context passed alongside the skill (accepted but not used by the tool itself)
+    #[serde(default)]
+    args: Option<String>,
 }
 
 fn default_action() -> String {
@@ -56,6 +59,10 @@ impl Tool for SkillTool {
                 "name": {
                     "type": "string",
                     "description": "Skill name."
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Optional arguments or context to pass with the skill."
                 }
             }
         })
@@ -116,19 +123,22 @@ impl SkillTool {
         let skills = registry.list();
 
         if skills.is_empty() {
-            return Ok(ToolOutput::new(
+            let dir_name = crate::storage::jcode_dir()
+                .map(|d| format!("{}/skills", d.display()))
+                .unwrap_or_else(|_| "~/.jcode/skills".to_string());
+            return Ok(ToolOutput::new(format!(
                 "No skills available.\n\n\
                 Skills are loaded from:\n\
-                - ~/.claude/skills/<skill-name>/SKILL.md\n\
-                - ./.claude/skills/<skill-name>/SKILL.md\n\n\
+                - {dir_name}/<skill-name>/SKILL.md\n\
+                - ./.jcode/skills/<skill-name>/SKILL.md\n\n\
                 Create a SKILL.md file with YAML frontmatter:\n\
                 ---\n\
                 name: my-skill\n\
                 description: What this skill does\n\
                 allowed-tools: bash, read, write\n\
                 ---\n\n\
-                # Skill content here",
-            )
+                # Skill content here"
+            ))
             .with_title("Skills: None available"));
         }
 

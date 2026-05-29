@@ -107,7 +107,12 @@ impl App {
         let prompt_cost = (self.streaming_input_tokens as f32 * prompt_price) / 1_000_000.0;
         let completion_cost =
             (self.streaming_output_tokens as f32 * completion_price) / 1_000_000.0;
-        self.total_cost += prompt_cost + completion_cost;
+        let delta = prompt_cost + completion_cost;
+        self.total_cost += delta;
+        if delta > 0.0 {
+            self.last_turn_cost_delta = delta;
+            self.last_turn_cost_at = Some(Instant::now());
+        }
     }
 
     pub(super) fn compute_streaming_tps(&self) -> Option<f32> {

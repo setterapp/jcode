@@ -608,7 +608,7 @@ pub(super) async fn execute_debug_command(
         let info_path = jcode_dir.join("reload-info");
         std::fs::write(&info_path, format!("reload:{}", hash))?;
 
-        let _request_id = super::send_reload_signal(hash.clone(), None, false);
+        let _request_id = super::send_reload_signal(hash.clone(), None, false, false);
 
         return Ok(format!(
             "Reload signal sent for build {}. Server will restart.",

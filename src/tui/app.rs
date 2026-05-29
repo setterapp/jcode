@@ -555,6 +555,11 @@ pub struct App {
     kv_cache_miss_samples: Vec<KvCacheMissSample>,
     // Total cost in USD (for API-key providers)
     total_cost: f32,
+    /// Cost added by the most recently completed turn (cost-based providers).
+    /// Shown briefly in the statusline as `+$0.04` for fast feedback.
+    last_turn_cost_delta: f32,
+    /// When `last_turn_cost_delta` was recorded; used to expire the badge after a few seconds.
+    last_turn_cost_at: Option<Instant>,
     // Cached pricing (input $/1M tokens, output $/1M tokens)
     cached_prompt_price: Option<f32>,
     cached_completion_price: Option<f32>,
@@ -571,6 +576,8 @@ pub struct App {
     remote_resume_activity: Option<RemoteResumeActivity>,
     // Reload reconnect is waiting for server history before deciding whether to continue.
     pending_reload_reconnect_status: Option<PendingReloadReconnectStatus>,
+    /// Set by `/refresh-models --wait` so the next ModelRefreshCompleted event auto-opens the picker.
+    pub(crate) pending_open_model_picker_on_refresh: bool,
     // Accurate TPS tracking: only counts actual token streaming time, not tool execution
     /// Set when first TextDelta arrives in a streaming response
     streaming_tps_start: Option<Instant>,

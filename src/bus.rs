@@ -284,6 +284,11 @@ pub enum BusEvent {
     },
     /// Background compaction task finished (check_and_apply should be called)
     CompactionFinished,
+    /// Periodic heartbeat while a background compaction task is running. Lets
+    /// the TUI render a live "compacting (3s)…" indicator without polling.
+    CompactionProgress {
+        elapsed_ms: u64,
+    },
     /// Provider's available models list may have changed
     ModelsUpdated,
     /// A background provider setup task selected a model for this session.
@@ -300,6 +305,17 @@ pub enum BusEvent {
     /// User-defined `[status_line]` shell hook produced fresh output. The TUI
     /// should redraw to pick up the new bottom-bar text from the runner cell.
     StatusLineUpdated,
+    /// Background MCP-connect task finished (standalone mode). Carries the
+    /// list of connected `(server_name, tool_count)` pairs and any per-server
+    /// failure messages so the TUI can update its `mcp_server_names` cache
+    /// and surface error cards without blocking startup.
+    McpServersUpdated(McpServersUpdated),
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct McpServersUpdated {
+    pub servers: Vec<(String, usize)>,
+    pub failures: Vec<(String, String)>,
 }
 
 pub struct Bus {

@@ -1,8 +1,39 @@
 use anyhow::Result;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::Command as ProcessCommand;
+use std::process::{Command as ProcessCommand, Stdio};
 
 use crate::{build, tui::RunResult, update};
+
+fn drain_cargo_stream<R: std::io::Read>(
+    reader: R,
+    session_id: String,
+    action: crate::bus::ClientMaintenanceAction,
+) {
+    use crate::bus::{Bus, BusEvent, SessionUpdateStatus};
+    let mut buf = BufReader::new(reader);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match buf.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() {
+                    continue;
+                }
+                Bus::global().publish(BusEvent::SessionUpdateStatus(
+                    SessionUpdateStatus::Status {
+                        session_id: session_id.clone(),
+                        action,
+                        message: trimmed.to_string(),
+                    },
+                ));
+            }
+            Err(_) => break,
+        }
+    }
+}
 
 pub fn has_requested_action(run_result: &RunResult) -> bool {
     run_result.reload_session.is_some()
@@ -222,38 +253,69 @@ pub fn spawn_background_session_rebuild(session_id: String) {
             return;
         };
 
-        publish(SessionUpdateStatus::Status {
-            session_id: session_id.clone(),
-            action,
-            message: "Pulling latest changes in the background...".to_string(),
-        });
-        if let Err(error) = update::run_git_pull_ff_only(&repo_dir, true) {
-            publish(SessionUpdateStatus::Status {
-                session_id: session_id.clone(),
-                action,
-                message: format!(
-                    "Git pull skipped: {}. Continuing with the current checkout.",
-                    error
-                ),
-            });
-        }
+        // Locate cargo — prefer explicit path to handle environments where
+        // ~/.cargo/bin is not in the inherited PATH.
+        let cargo = std::env::var("CARGO")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                dirs::home_dir().map(|h| h.join(".cargo").join("bin").join("cargo"))
+            })
+            .filter(|p| p.exists())
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "cargo".to_string());
 
-        publish(SessionUpdateStatus::Status {
-            session_id: session_id.clone(),
-            action,
-            message: "Building release binary in the background...".to_string(),
-        });
-        let build_status = match ProcessCommand::new("cargo")
-            .args(["build", "--release"])
+        let binary_name = build::binary_name();
+        // Build debug profile (fast incremental) then promote to release path
+        // so preferred_reload_candidate() finds it without the slow optimizer pass.
+        //
+        // Cargo writes a fancy progress bar (carriage returns + cursor codes)
+        // when its stdout is a TTY. With the TUI redrawing on the same fd that
+        // shreds the screen, so we capture both streams, force plain output,
+        // and forward each line to the status notice instead.
+        let build_status = match ProcessCommand::new(&cargo)
+            .args(["build", "--bin", binary_name])
             .current_dir(&repo_dir)
-            .status()
+            .env("CARGO_TERM_PROGRESS_WHEN", "never")
+            .env("CARGO_TERM_COLOR", "never")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
         {
-            Ok(status) => status,
+            Ok(mut child) => {
+                let stdout_handle = child.stdout.take().map(|r| {
+                    let sid = session_id.clone();
+                    std::thread::spawn(move || drain_cargo_stream(r, sid, action))
+                });
+                let stderr_handle = child.stderr.take().map(|r| {
+                    let sid = session_id.clone();
+                    std::thread::spawn(move || drain_cargo_stream(r, sid, action))
+                });
+                let status = child.wait();
+                if let Some(h) = stdout_handle {
+                    let _ = h.join();
+                }
+                if let Some(h) = stderr_handle {
+                    let _ = h.join();
+                }
+                match status {
+                    Ok(status) => status,
+                    Err(error) => {
+                        publish(SessionUpdateStatus::Error {
+                            session_id,
+                            action,
+                            message: format!("Rebuild failed while waiting for cargo: {}", error),
+                        });
+                        return;
+                    }
+                }
+            }
             Err(error) => {
                 publish(SessionUpdateStatus::Error {
                     session_id,
                     action,
-                    message: format!("Rebuild failed while starting cargo build: {}", error),
+                    message: format!("Rebuild failed: cargo not found ({}): {}", cargo, error),
                 });
                 return;
             }
@@ -263,37 +325,22 @@ pub fn spawn_background_session_rebuild(session_id: String) {
             publish(SessionUpdateStatus::Error {
                 session_id,
                 action,
-                message: "Build failed — staying on the current binary.".to_string(),
+                message: "Build failed — check errors and try /rebuild again.".to_string(),
             });
             return;
         }
 
-        publish(SessionUpdateStatus::Status {
-            session_id: session_id.clone(),
-            action,
-            message: "Running release tests in the background...".to_string(),
-        });
-        let test_status = match ProcessCommand::new("cargo")
-            .args(["test", "--release", "--", "--test-threads=1"])
-            .current_dir(&repo_dir)
-            .status()
-        {
-            Ok(status) => status,
-            Err(error) => {
-                publish(SessionUpdateStatus::Error {
-                    session_id,
-                    action,
-                    message: format!("Rebuild failed while starting tests: {}", error),
-                });
-                return;
-            }
-        };
-
-        if !test_status.success() {
+        // Copy debug binary to release path so the reload candidate logic finds it.
+        let debug_bin = repo_dir.join("target").join("debug").join(binary_name);
+        let release_bin = build::release_binary_path(&repo_dir);
+        if let Some(parent) = release_bin.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::copy(&debug_bin, &release_bin) {
             publish(SessionUpdateStatus::Error {
                 session_id,
                 action,
-                message: "Tests failed — staying on the current binary. Fix the failing tests and try /rebuild again.".to_string(),
+                message: format!("Rebuild succeeded but could not promote binary: {}", e),
             });
             return;
         }

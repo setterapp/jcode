@@ -11,11 +11,17 @@ use std::time::SystemTime;
 
 /// Get the jcode repository directory
 pub fn get_repo_dir() -> Option<PathBuf> {
-    // First try: compile-time directory
+    // First try: compile-time directory (CARGO_MANIFEST_DIR = crates/jcode-build-support)
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let path = PathBuf::from(manifest_dir);
     if is_jcode_repo(&path) {
         return Some(path);
+    }
+    // Also try 2 levels up (crates/jcode-build-support → repo root)
+    if let Some(repo) = path.parent().and_then(|p| p.parent()) {
+        if is_jcode_repo(repo) {
+            return Some(repo.to_path_buf());
+        }
     }
 
     // Fallback: check relative to executable

@@ -32,9 +32,10 @@ impl App {
             content.push_str(&note);
         }
         if action == crate::bus::ClientMaintenanceAction::Rebuild {
-            content.push_str(
-                "\n\n**Pipeline:** `git pull --ff-only` → `cargo build --release` → `cargo test --release -- --test-threads=1`",
-            );
+            content.push_str(&format!(
+                "\n\n`cargo build --bin {}`",
+                crate::build::binary_stem()
+            ));
         }
         content
     }

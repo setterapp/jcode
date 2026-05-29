@@ -242,6 +242,26 @@ pub(super) fn handle_bus_event(
             handle_manual_tool_completed(app, result);
             true
         }
+        Ok(BusEvent::McpServersUpdated(update)) => {
+            // Background MCP connect finished (standalone path). Update the
+            // header cache and surface any failed connections as error cards.
+            app.mcp_server_names = update.servers.clone();
+            if !update.servers.is_empty() {
+                let total: usize = update.servers.iter().map(|(_, n)| n).sum();
+                app.set_status_notice(format!(
+                    "mcp: {} server(s), {} tools",
+                    update.servers.len(),
+                    total,
+                ));
+            }
+            for (name, error) in &update.failures {
+                app.push_display_message(crate::tui::DisplayMessage::error(format!(
+                    "MCP '{}' failed: {}",
+                    name, error
+                )));
+            }
+            true
+        }
         _ => false,
     }
 }

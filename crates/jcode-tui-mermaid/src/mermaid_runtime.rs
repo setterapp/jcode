@@ -132,13 +132,29 @@ pub fn init_picker() {
     });
 }
 
+/// Whether interactive terminal graphics (mermaid diagram images + inline
+/// images) are enabled. OFF by default — content renders as text/code
+/// fallback instead. Opt in with `JC_TERMINAL_GRAPHICS=1`. Video-export mode
+/// is unaffected (it has its own gate).
+fn terminal_graphics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("JC_TERMINAL_GRAPHICS")
+            .ok()
+            .and_then(|raw| parse_env_bool(&raw))
+            .unwrap_or(false)
+    })
+}
+
 /// Get the current protocol type (for debugging/display)
 pub fn protocol_type() -> Option<ProtocolType> {
-    let real = PICKER
-        .get()
-        .and_then(|p| p.as_ref().map(|picker| picker.protocol_type()));
-    if real.is_some() {
-        return real;
+    if terminal_graphics_enabled() {
+        let real = PICKER
+            .get()
+            .and_then(|p| p.as_ref().map(|picker| picker.protocol_type()));
+        if real.is_some() {
+            return real;
+        }
     }
     if VIDEO_EXPORT_MODE.load(Ordering::Relaxed) {
         Some(ProtocolType::Halfblocks)
@@ -148,7 +164,8 @@ pub fn protocol_type() -> Option<ProtocolType> {
 }
 
 pub fn image_protocol_available() -> bool {
-    PICKER.get().and_then(|p| p.as_ref()).is_some() || VIDEO_EXPORT_MODE.load(Ordering::Relaxed)
+    (terminal_graphics_enabled() && PICKER.get().and_then(|p| p.as_ref()).is_some())
+        || VIDEO_EXPORT_MODE.load(Ordering::Relaxed)
 }
 
 /// Enable video-export mode: mermaid images produce hash-placeholder lines

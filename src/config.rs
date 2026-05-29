@@ -11,15 +11,37 @@ pub use jcode_config_types::{
     NamedProviderType, NativeScrollbarConfig, ProviderConfig, SafetyConfig,
     SessionPickerResumeAction, TaskModelsConfig, UpdateChannel,
 };
+use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
+static CONFIG: OnceLock<ArcSwap<Config>> = OnceLock::new();
 
-/// Get the global config instance (loaded once on first access)
-pub fn config() -> &'static Config {
-    CONFIG.get_or_init(Config::load)
+/// Get the global config instance. Returns a guard that derefs to Config.
+pub fn config() -> arc_swap::Guard<Arc<Config>> {
+    CONFIG
+        .get_or_init(|| ArcSwap::new(Arc::new(Config::load())))
+        .load()
+}
+
+/// Reload config from disk, replacing the live instance atomically.
+pub fn reload_config() {
+    if let Some(swap) = CONFIG.get() {
+        swap.store(Arc::new(Config::load()));
+    }
+}
+
+/// Simple provider profile for quick account switching.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProfileConfig {
+    /// API key to use (e.g. ANTHROPIC_API_KEY value)
+    pub api_key: Option<String>,
+    /// Default model for this profile
+    pub model: Option<String>,
+    /// Provider name override (e.g. "anthropic", "openai")
+    pub provider: Option<String>,
 }
 
 /// Main configuration struct
@@ -52,6 +74,11 @@ pub struct Config {
     /// base_url = "https://llm.example.com/v1"
     /// api_key_env = "MY_GATEWAY_API_KEY"
     pub providers: BTreeMap<String, NamedProviderConfig>,
+
+    /// Simple named profiles for quick provider/account switching.
+    /// [[profiles.work]], [[profiles.personal]], etc.
+    #[serde(default)]
+    pub profiles: BTreeMap<String, ProfileConfig>,
 
     /// Agent-specific model defaults
     pub agents: AgentsConfig,

@@ -73,11 +73,7 @@ name = "jcode"
 path = "src/lib.rs"
 
 [[bin]]
-name = "jcode"
-path = "src/main.rs"
-
-[[bin]]
-name = "jcode-plus"
+name = "jc"
 path = "src/main_jcode_plus.rs"
 
 [[bin]]
@@ -115,7 +111,7 @@ futures = "0.3"
 async-trait = "0.1"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "stream", "blocking", "gzip", "brotli", "http2"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 
@@ -225,6 +221,10 @@ jcode-tool-core = { path = "crates/jcode-tool-core" }
 jcode-tool-types = { path = "crates/jcode-tool-types" }
 jcode-side-panel-types = { path = "crates/jcode-side-panel-types" }
 jcode-client-core = { path = "crates/jcode-client-core" }
+
+# Config hot reload
+notify = "7"
+arc-swap = "1"
 
 # Archive extraction (for auto-update)
 flate2 = "1"

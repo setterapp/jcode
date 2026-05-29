@@ -42,19 +42,25 @@ impl SubagentTool {
         // `swarm_model_by_provider.openai = "gpt-5.4-mini"` so subagents
         // route to the correct cheap model regardless of which provider
         // the user is currently on.
+        let cfg = crate::config::config();
         requested_model
             .or(existing_session_model)
             .or(parent_subagent_model)
-            .or_else(|| crate::config::config().agents.resolve_swarm_model(provider_name))
+            .or_else(|| cfg.agents.resolve_swarm_model(provider_name))
             .unwrap_or(provider_model)
             .to_string()
     }
+}
+
+fn default_subagent_type() -> String {
+    "general-purpose".to_string()
 }
 
 #[derive(Deserialize)]
 struct SubagentInput {
     description: String,
     prompt: String,
+    #[serde(default = "default_subagent_type")]
     subagent_type: String,
     #[serde(default)]
     model: Option<String>,
@@ -94,7 +100,7 @@ impl Tool for SubagentTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
-            "required": ["description", "prompt", "subagent_type"],
+            "required": ["description", "prompt"],
             "properties": {
                 "intent": super::intent_schema_property(),
                 "description": {

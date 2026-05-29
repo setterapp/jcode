@@ -50,6 +50,9 @@ impl MultiProvider {
 
     pub(super) fn new_with_auth_status(auth_status: auth::AuthStatus) -> Self {
         let provider_init_start = std::time::Instant::now();
+        // Kick off the models.dev catalog hydration in the background. Idempotent;
+        // first call wins, later boot paths are no-ops.
+        super::models_dev::init_background();
         let cfg = crate::config::config();
         let mut default_named_provider_profile: Option<String> = None;
         if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
@@ -62,7 +65,7 @@ impl MultiProvider {
                 crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
             } else if cfg.providers.contains_key(pref) {
                 match crate::provider_catalog::apply_named_provider_profile_env_from_config(
-                    pref, cfg,
+                    pref, &**cfg,
                 ) {
                     Ok(profile_name) => {
                         crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", &profile_name);

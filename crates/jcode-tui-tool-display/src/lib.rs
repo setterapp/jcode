@@ -25,6 +25,8 @@ pub fn canonical_tool_name(name: &str) -> &str {
         "MultiEdit" => "multiedit",
         "Patch" => "patch",
         "ApplyPatch" => "apply_patch",
+        "WebFetch" => "webfetch",
+        "WebSearch" => "websearch",
         other => other,
     }
 }

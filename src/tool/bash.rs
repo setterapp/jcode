@@ -632,6 +632,11 @@ impl BashTool {
             .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
 
         if has_stdin_channel {
             command.stdin(Stdio::piped());
@@ -767,7 +772,20 @@ impl BashTool {
             }
             Ok(Err(e)) => Err(anyhow::anyhow!("Command failed: {}", e)),
             Err(_) => {
-                // Timeout - try to kill the process
+                // Timeout - kill the whole process group so grandchildren
+                // (curl/gh/etc holding network handles) die with the shell.
+                #[cfg(unix)]
+                if child_pid != 0 {
+                    let pgid = child_pid as i32;
+                    // SIGTERM first, brief grace, then SIGKILL.
+                    unsafe {
+                        libc::kill(-pgid, libc::SIGTERM);
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    unsafe {
+                        libc::kill(-pgid, libc::SIGKILL);
+                    }
+                }
                 let _ = child.kill().await;
                 Err(anyhow::anyhow!("Command timed out after {}ms", timeout_ms))
             }

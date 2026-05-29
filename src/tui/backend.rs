@@ -447,6 +447,21 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
+    /// Restart server using same binary and resume all sessions
+    pub async fn reset(&mut self) -> Result<()> {
+        let request = Request::Reset {
+            id: self.next_request_id,
+        };
+        self.next_request_id += 1;
+        self.send_request(request).await
+    }
+
+    pub async fn set_profile(&mut self, name: String) -> Result<()> {
+        let request = Request::SetProfile { id: self.next_request_id, name };
+        self.next_request_id += 1;
+        self.send_request(request).await
+    }
+
     /// Resume a specific session by ID
     pub async fn resume_session(&mut self, session_id: &str) -> Result<()> {
         let request = Request::ResumeSession {

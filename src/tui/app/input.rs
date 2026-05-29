@@ -1293,9 +1293,11 @@ pub(super) fn handle_modal_key(
             Some(jcode_tui_command_palette::PaletteAction::SelectSession(session_id)) => {
                 drop(palette);
                 app.command_palette = None;
-                app.set_status_notice(format!("Select session: {}", session_id));
-                // Use the session picker infrastructure to resume
-                app.open_session_picker();
+                let label = crate::id::extract_session_name(&session_id)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| session_id.clone());
+                app.set_status_notice(format!("Switching → {}", label));
+                crate::tui::workspace_client::queue_resume_session(session_id);
             }
             Some(jcode_tui_command_palette::PaletteAction::ClearChat) => {
                 drop(palette);
@@ -1664,8 +1666,10 @@ impl App {
             return Ok(());
         }
 
-        // Shift+Enter inserts a newline in the input box
-        if code == KeyCode::Enter && modifiers.contains(KeyModifiers::SHIFT) {
+        // Shift+Enter and Alt/Option+Enter insert a newline in the input box.
+        if code == KeyCode::Enter
+            && modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT)
+        {
             handle_shift_enter(self);
             return Ok(());
         }

@@ -67,11 +67,8 @@ impl Config {
         cfg.provider.default_provider = provider.map(|s| s.to_string());
         cfg.save()?;
 
-        // Update the global singleton so current session reflects the change
-        let global = CONFIG.get_or_init(|| cfg.clone());
-        // CONFIG is a OnceLock so we can't mutate it directly, but the file is saved
-        // and will take effect on next restart. For this session we log it.
-        let _ = global; // suppress unused
+        // Update the live config so the current session reflects the saved change.
+        reload_config();
         crate::logging::info(&format!(
             "Saved default model: {}, provider: {}",
             model.unwrap_or("(none)"),

@@ -165,10 +165,14 @@ async fn stream_response(
 
     let mut stream = OpenRouterStream::new(response.bytes_stream(), model.clone(), provider_pin);
 
-    const SSE_CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+    let sse_chunk_timeout_secs: u64 = std::env::var("JCODE_SSE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    let sse_chunk_timeout = std::time::Duration::from_secs(sse_chunk_timeout_secs);
 
     loop {
-        let event = match tokio::time::timeout(SSE_CHUNK_TIMEOUT, stream.next()).await {
+        let event = match tokio::time::timeout(sse_chunk_timeout, stream.next()).await {
             Ok(Some(Ok(event))) => event,
             Ok(Some(Err(e))) => anyhow::bail!(
                 "OpenAI-compatible stream error\n  endpoint: {}\n  model: {}\n  auth: {}\n  error: {}",
@@ -179,12 +183,16 @@ async fn stream_response(
             ),
             Ok(None) => break, // stream ended normally
             Err(_) => {
-                crate::logging::warn("OpenRouter SSE stream timed out (no data for 180s)");
+                crate::logging::warn(&format!(
+                    "OpenRouter SSE stream timed out (no data for {}s)",
+                    sse_chunk_timeout_secs
+                ));
                 anyhow::bail!(
-                    "OpenAI-compatible stream timeout\n  endpoint: {}\n  model: {}\n  auth: {}\n  timeout: no data received for 180 seconds\nHint: the provider may not support streaming, the model may be overloaded, or the request may be stuck before emitting tokens.",
+                    "OpenAI-compatible stream timeout\n  endpoint: {}\n  model: {}\n  auth: {}\n  timeout: no data received for {} seconds\nHint: the provider may not support streaming, the model may be overloaded, or the request may be stuck before emitting tokens.",
                     url,
                     model,
-                    auth.label()
+                    auth.label(),
+                    sse_chunk_timeout_secs
                 );
             }
         };
@@ -290,7 +298,9 @@ impl OpenRouterStream {
 
         while let Some(pos) = self.buffer.find("\n\n") {
             let event_str = self.buffer[..pos].to_string();
-            self.buffer = self.buffer[pos + 2..].to_string();
+            // Drain the consumed bytes in-place to avoid reallocating the
+            // remaining buffer on every event (was: `self.buffer = self.buffer[pos+2..].to_string()`).
+            self.buffer.drain(..pos + 2);
 
             // Parse SSE event
             let mut data = None;
