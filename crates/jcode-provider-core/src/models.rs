@@ -174,15 +174,16 @@ pub fn context_limit_for_model_with_provider_and_cache(
         return Some(272_000);
     }
 
-    if model.starts_with("claude-opus-4-6") || model.starts_with("claude-opus-4.6") {
-        return Some(if is_1m { 1_048_576 } else { 200_000 });
+    // Current Opus/Sonnet 4.x support the 1M context window (GA). When the
+    // caller explicitly requested the `[1m]` variant, report the long-context
+    // window; otherwise the standard 200k window.
+    if is_1m && crate::anthropic::anthropic_supports_1m(model) {
+        return Some(1_048_576);
     }
 
-    if model.starts_with("claude-sonnet-4-6") || model.starts_with("claude-sonnet-4.6") {
-        return Some(if is_1m { 1_048_576 } else { 200_000 });
-    }
-
-    if model.starts_with("claude-opus-4-5") || model.starts_with("claude-opus-4.5") {
+    // Standard window for current Claude Opus/Sonnet 4.x (covers 4-5/4-6/4-7/4-8
+    // in both hyphen and dotted forms). The 1M variants are handled above.
+    if model.starts_with("claude-opus-4") || model.starts_with("claude-sonnet-4") {
         return Some(200_000);
     }
 
@@ -241,6 +242,20 @@ mod tests {
         );
         assert_eq!(
             context_limit_for_model_with_provider("claude-sonnet-4.6", Some("claude")),
+            Some(200_000)
+        );
+        // Current Opus models also expose the 1M variant.
+        assert_eq!(
+            context_limit_for_model_with_provider("claude-opus-4-8[1m]", Some("claude")),
+            Some(1_048_576)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("claude-opus-4-7[1m]", Some("claude")),
+            Some(1_048_576)
+        );
+        // Base (non-[1m]) stays at the standard window.
+        assert_eq!(
+            context_limit_for_model_with_provider("claude-opus-4-8", Some("claude")),
             Some(200_000)
         );
     }

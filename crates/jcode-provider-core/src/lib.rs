@@ -10,7 +10,7 @@ pub use anthropic::{
     ANTHROPIC_OAUTH_BETA_HEADERS, ANTHROPIC_OAUTH_BETA_HEADERS_1M, anthropic_effectively_1m,
     anthropic_is_1m_model, anthropic_map_tool_name_for_oauth, anthropic_map_tool_name_from_oauth,
     anthropic_oauth_beta_headers, anthropic_stainless_arch, anthropic_stainless_os,
-    anthropic_strip_1m_suffix,
+    anthropic_strip_1m_suffix, anthropic_supports_1m,
 };
 pub use catalog_refresh::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
 pub use failover::{
@@ -377,8 +377,14 @@ pub fn shared_http_client() -> reqwest::Client {
             reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
+                .tcp_nodelay(true)
                 .pool_idle_timeout(Duration::from_secs(90))
-                .pool_max_idle_per_host(8)
+                .pool_max_idle_per_host(16)
+                .http2_keep_alive_interval(Duration::from_secs(20))
+                .http2_keep_alive_timeout(Duration::from_secs(10))
+                .http2_keep_alive_while_idle(true)
+                .gzip(true)
+                .brotli(true)
                 .build()
                 .unwrap_or_else(|err| {
                     eprintln!("jcode: failed to build shared provider HTTP client: {err}");

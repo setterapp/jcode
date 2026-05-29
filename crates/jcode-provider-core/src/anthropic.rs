@@ -20,6 +20,24 @@ pub fn anthropic_strip_1m_suffix(model: &str) -> &str {
     model.strip_suffix("[1m]").unwrap_or(model)
 }
 
+/// Whether an Anthropic model supports the 1M context window (GA for current
+/// Opus/Sonnet 4.x). Used to decide whether to offer a `[1m]` picker variant
+/// and what context limit to report for it. Accepts hyphen or dotted ids and
+/// an optional `[1m]` suffix.
+pub fn anthropic_supports_1m(model: &str) -> bool {
+    let base = anthropic_strip_1m_suffix(model.trim())
+        .to_ascii_lowercase()
+        .replace('.', "-");
+    matches!(
+        base.as_str(),
+        "claude-opus-4-6"
+            | "claude-opus-4-6-fast"
+            | "claude-opus-4-7"
+            | "claude-opus-4-8"
+            | "claude-sonnet-4-6"
+    )
+}
+
 /// Get the OAuth beta header value appropriate for the model.
 pub fn anthropic_oauth_beta_headers(model: &str) -> &'static str {
     if anthropic_is_1m_model(model) {
@@ -40,6 +58,8 @@ pub fn anthropic_map_tool_name_for_oauth(name: &str) -> String {
         "subagent" => "Agent",
         "schedule" => "ScheduleWakeup",
         "skill_manage" => "Skill",
+        "memory" => "Memory",
+        "tool_search" => "ToolSearch",
         _ => name,
     }
     .to_string()
@@ -56,7 +76,8 @@ pub fn anthropic_map_tool_name_from_oauth(name: &str) -> String {
         "Agent" => "subagent",
         "ScheduleWakeup" => "schedule",
         "Skill" => "skill_manage",
-        // ToolSearch intentionally has no direct local analogue yet.
+        "ToolSearch" => "tool_search",
+        "Memory" => "memory",
         _ => name,
     }
     .to_string()

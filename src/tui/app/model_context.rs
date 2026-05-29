@@ -254,7 +254,11 @@ impl App {
             )
             .unwrap_or(self.provider.context_window())
         } else {
-            self.provider.context_window()
+            // Local: prefer the per-model context window (so `[1m]` variants
+            // report 1M, standard models 200k) and only fall back to the
+            // provider's generic window when the model is unknown.
+            crate::provider::context_limit_for_model_with_provider(model, None)
+                .unwrap_or_else(|| self.provider.context_window())
         };
         self.context_limit = limit as u64;
         self.context_warning_shown = false;
@@ -862,7 +866,15 @@ impl App {
 
 pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
     if is_refresh_model_list_command(trimmed) {
-        app.set_status_notice("Refreshing model list...");
+        let wait = refresh_command_wants_wait(trimmed);
+        app.set_status_notice(if wait {
+            "Refreshing model list (will open picker)..."
+        } else {
+            "Refreshing model list..."
+        });
+        if wait {
+            app.pending_open_model_picker_on_refresh = true;
+        }
         let provider = app.provider.clone();
         let session_id = app
             .active_client_session_id()
@@ -900,6 +912,12 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed == "/model" || trimmed == "/models" {
         app.open_model_picker();
+        return true;
+    }
+
+    if trimmed == "/provider" || trimmed == "/providers" {
+        let lines = describe_providers(app);
+        app.push_display_message(DisplayMessage::system(lines));
         return true;
     }
 
@@ -1200,6 +1218,7 @@ impl App {
         if self.active_client_session_id() != Some(completed.session_id.as_str()) {
             return;
         }
+        let open_picker_after = std::mem::take(&mut self.pending_open_model_picker_on_refresh);
         match completed.result {
             Ok(summary) => {
                 self.invalidate_model_picker_cache();
@@ -1210,6 +1229,9 @@ impl App {
                     "Model list refreshed: +{} models, +{} routes, ~{} changed",
                     summary.models_added, summary.routes_added, summary.routes_changed
                 ));
+                if open_picker_after {
+                    self.open_model_picker();
+                }
             }
             Err(error) => {
                 self.push_display_message(DisplayMessage::error(format!(
@@ -1223,7 +1245,63 @@ impl App {
 }
 
 pub(super) fn is_refresh_model_list_command(trimmed: &str) -> bool {
-    trimmed == "/refresh-model-list"
+    let head = trimmed.split_whitespace().next().unwrap_or("");
+    matches!(head, "/refresh-model-list" | "/refresh-models")
+}
+
+fn describe_providers(app: &App) -> String {
+    use crate::auth::AuthState;
+
+    fn state_label(state: AuthState) -> &'static str {
+        match state {
+            AuthState::Available => "● configured",
+            AuthState::Expired => "◐ expired",
+            AuthState::NotConfigured => "○ not configured",
+        }
+    }
+
+    let auth = crate::auth::AuthStatus::check_fast();
+    let active_name = app.provider.name();
+    let active_model = app.provider.model();
+    let upstream = app
+        .upstream_provider
+        .as_deref()
+        .filter(|name| !name.is_empty());
+
+    let mut lines = vec![
+        "**Providers**".to_string(),
+        format!(
+            "Active: **{}** · model: `{}`{}",
+            active_name,
+            active_model,
+            upstream
+                .map(|name| format!(" · upstream: {}", name))
+                .unwrap_or_default()
+        ),
+        String::new(),
+        format!("anthropic     {}", state_label(auth.anthropic.state)),
+        format!("openai        {}", state_label(auth.openai)),
+        format!("openrouter    {}", state_label(auth.openrouter)),
+        format!("copilot       {}", state_label(auth.copilot)),
+        String::new(),
+        "Switch model with `/model <name>`. Refresh catalog with `/refresh-models --wait`.".into(),
+    ];
+
+    if upstream.is_some() {
+        lines.push(
+            "Upstream routing is set by the active model — pick a different `/model` to change it."
+                .into(),
+        );
+    }
+
+    lines.join("\n")
+}
+
+fn refresh_command_wants_wait(trimmed: &str) -> bool {
+    trimmed
+        .split_whitespace()
+        .skip(1)
+        .any(|tok| tok == "--wait" || tok == "-w")
 }
 
 pub(super) fn format_model_refresh_summary(

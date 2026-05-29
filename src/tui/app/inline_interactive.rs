@@ -767,54 +767,55 @@ impl App {
                     let is_this_current =
                         *name == current_model && current_effort.as_deref() == Some(*effort);
                     let or_created = openrouter_created_timestamp(name);
-                    for route in &entry_routes {
-                        entries.push(PickerEntry {
-                            name: display_name.clone(),
-                            options: vec![route.clone()],
-                            action: PickerAction::Model,
-                            selected_option: 0,
-                            is_current: is_this_current,
-                            recommended: RECOMMENDED_MODELS.contains(&name.as_str())
-                                && (*effort == "xhigh" || *effort == "high")
-                                && (!(CLAUDE_OAUTH_ONLY_MODELS.contains(&name.as_str())
-                                    || OPENAI_OAUTH_ONLY_MODELS.contains(&name.as_str())
-                                    || COPILOT_OAUTH_MODELS.contains(&name.as_str())
-                                    || OPENROUTER_AUTO_ONLY_MODELS.contains(&name.as_str()))
-                                    || (route_can_be_recommended(name, route) && route.available)),
-                            recommendation_rank: recommendation_rank(name, RECOMMENDED_MODELS),
-                            old: old_threshold_secs > 0
-                                && or_created.map(|t| t < old_threshold_secs).unwrap_or(false),
-                            created_date: or_created.map(format_created),
-                            effort: Some(effort.to_string()),
-                            is_default: is_config_default(name),
-                        });
-                    }
+                    let recommended = RECOMMENDED_MODELS.contains(&name.as_str())
+                        && (*effort == "xhigh" || *effort == "high")
+                        && (!(CLAUDE_OAUTH_ONLY_MODELS.contains(&name.as_str())
+                            || OPENAI_OAUTH_ONLY_MODELS.contains(&name.as_str())
+                            || COPILOT_OAUTH_MODELS.contains(&name.as_str())
+                            || OPENROUTER_AUTO_ONLY_MODELS.contains(&name.as_str()))
+                            || entry_routes
+                                .iter()
+                                .any(|route| route_can_be_recommended(name, route) && route.available));
+                    entries.push(PickerEntry {
+                        name: display_name,
+                        options: entry_routes.clone(),
+                        action: PickerAction::Model,
+                        selected_option: 0,
+                        is_current: is_this_current,
+                        recommended,
+                        recommendation_rank: recommendation_rank(name, RECOMMENDED_MODELS),
+                        old: old_threshold_secs > 0
+                            && or_created.map(|t| t < old_threshold_secs).unwrap_or(false),
+                        created_date: or_created.map(format_created),
+                        effort: Some(effort.to_string()),
+                        is_default: is_config_default(name),
+                    });
                 }
             } else {
                 let or_created = openrouter_created_timestamp(name);
                 let is_old = old_threshold_secs > 0
                     && or_created.map(|t| t < old_threshold_secs).unwrap_or(false);
-                for route in entry_routes {
-                    let is_recommended = RECOMMENDED_MODELS.contains(&name.as_str())
-                        && (!(CLAUDE_OAUTH_ONLY_MODELS.contains(&name.as_str())
-                            || OPENAI_OAUTH_ONLY_MODELS.contains(&name.as_str())
-                            || COPILOT_OAUTH_MODELS.contains(&name.as_str())
-                            || OPENROUTER_AUTO_ONLY_MODELS.contains(&name.as_str()))
-                            || (route_can_be_recommended(name, &route) && route.available));
-                    entries.push(PickerEntry {
-                        name: name.clone(),
-                        options: vec![route],
-                        action: PickerAction::Model,
-                        selected_option: 0,
-                        is_current: *name == current_model,
-                        recommended: is_recommended,
-                        recommendation_rank: recommendation_rank(name, RECOMMENDED_MODELS),
-                        old: is_old,
-                        created_date: or_created.map(format_created),
-                        effort: None,
-                        is_default: is_config_default(name),
-                    });
-                }
+                let is_recommended = RECOMMENDED_MODELS.contains(&name.as_str())
+                    && (!(CLAUDE_OAUTH_ONLY_MODELS.contains(&name.as_str())
+                        || OPENAI_OAUTH_ONLY_MODELS.contains(&name.as_str())
+                        || COPILOT_OAUTH_MODELS.contains(&name.as_str())
+                        || OPENROUTER_AUTO_ONLY_MODELS.contains(&name.as_str()))
+                        || entry_routes
+                            .iter()
+                            .any(|route| route_can_be_recommended(name, route) && route.available));
+                entries.push(PickerEntry {
+                    name: name.clone(),
+                    options: entry_routes,
+                    action: PickerAction::Model,
+                    selected_option: 0,
+                    is_current: *name == current_model,
+                    recommended: is_recommended,
+                    recommendation_rank: recommendation_rank(name, RECOMMENDED_MODELS),
+                    old: is_old,
+                    created_date: or_created.map(format_created),
+                    effort: None,
+                    is_default: is_config_default(name),
+                });
             }
         }
 
@@ -2108,6 +2109,20 @@ impl App {
                                     self.upstream_provider = None;
                                     self.status_detail = None;
                                     self.invalidate_model_picker_cache();
+
+                                    let active_model = self.provider.model();
+                                    // Resize the context bar to the new model's
+                                    // window (e.g. 1M for `[1m]` variants).
+                                    self.update_context_limit_for_model(&active_model);
+                                    // Persist as last-used model: per-session so
+                                    // resume restores it, and as the global config
+                                    // default so brand-new sessions reopen on it
+                                    // (Claude Code-style "remember last model").
+                                    self.session.model = Some(active_model.clone());
+                                    let _ = self.session.save();
+                                    let _ = crate::config::Config::set_default_model_only(Some(
+                                        &active_model,
+                                    ));
                                 }
                                 Err(error) => {
                                     self.push_display_message(DisplayMessage::error(

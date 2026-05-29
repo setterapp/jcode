@@ -294,7 +294,12 @@ fn model_ids_with_context_aliases(models: Vec<String>) -> Vec<String> {
         if seen.insert(model.clone()) {
             deduped.push(model.clone());
         }
-        if get_cached_context_limit(&normalized).unwrap_or_default() >= 1_000_000 {
+        // Offer a `[1m]` variant when the model exposes a >=1M context window,
+        // either via the live catalog cache or because it is a current Anthropic
+        // Opus/Sonnet model with GA 1M support.
+        if get_cached_context_limit(&normalized).unwrap_or_default() >= 1_000_000
+            || jcode_provider_core::anthropic_supports_1m(&normalized)
+        {
             let alias = format!("{}[1m]", normalized);
             if seen.insert(alias.clone()) {
                 deduped.push(alias);
