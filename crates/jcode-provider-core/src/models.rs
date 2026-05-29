@@ -181,9 +181,9 @@ pub fn context_limit_for_model_with_provider_and_cache(
         return Some(1_048_576);
     }
 
-    // Standard window for current Claude Opus/Sonnet 4.x (covers 4-5/4-6/4-7/4-8
-    // in both hyphen and dotted forms). The 1M variants are handled above.
-    if model.starts_with("claude-opus-4") || model.starts_with("claude-sonnet-4") {
+    // Standard 200k window for all current Claude models (Opus/Sonnet/Haiku,
+    // hyphen or dotted form). The 1M variants are handled above.
+    if model.starts_with("claude-") {
         return Some(200_000);
     }
 
@@ -257,6 +257,53 @@ mod tests {
         assert_eq!(
             context_limit_for_model_with_provider("claude-opus-4-8", Some("claude")),
             Some(200_000)
+        );
+    }
+
+    #[test]
+    fn context_limit_resolves_for_each_provider_family() {
+        // Anthropic: standard 200k, 1M for the explicit [1m] variants.
+        for m in ["claude-opus-4-8", "claude-haiku-4-5", "claude-sonnet-4-6"] {
+            assert_eq!(
+                context_limit_for_model_with_provider(m, None),
+                Some(200_000),
+                "claude base {m}"
+            );
+        }
+        for m in ["claude-opus-4-8[1m]", "claude-sonnet-4-6[1m]"] {
+            assert_eq!(
+                context_limit_for_model_with_provider(m, None),
+                Some(1_048_576),
+                "claude 1m {m}"
+            );
+        }
+
+        // OpenAI families.
+        assert_eq!(
+            context_limit_for_model_with_provider("gpt-5.4", None),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("gpt-5.5", None),
+            Some(272_000)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("gpt-5.3-codex-spark", None),
+            Some(128_000)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("gpt-5.2-chat-latest", None),
+            Some(128_000)
+        );
+
+        // Gemini long-context families.
+        assert_eq!(
+            context_limit_for_model_with_provider("gemini-2.5-pro", None),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("gemini-3-pro", None),
+            Some(1_000_000)
         );
     }
 

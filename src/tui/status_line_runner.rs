@@ -328,6 +328,7 @@ pub fn humanize_model_id(model_id: &str) -> String {
 
     let label = match base {
         // Anthropic
+        b if b.starts_with("claude-opus-4-8") => "Opus 4.8",
         b if b.starts_with("claude-opus-4-7") => "Opus 4.7",
         b if b.starts_with("claude-opus-4-6") => "Opus 4.6",
         b if b.starts_with("claude-opus-4-5") => "Opus 4.5",
