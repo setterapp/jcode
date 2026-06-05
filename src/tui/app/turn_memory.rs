@@ -35,6 +35,7 @@ impl App {
             None,
         );
         self.append_current_turn_system_reminder(&mut split);
+        self.append_plan_mode_guardrail(&mut split);
         self.context_info = context_info;
         split
     }

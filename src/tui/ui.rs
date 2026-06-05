@@ -1604,6 +1604,72 @@ fn ansi_line_from_stdout(stdout: &str, max_width: usize) -> Line<'static> {
     truncate_line_to_width(&line, max_width)
 }
 
+/// Rows the activity panel needs above the input: 1 for the plan-mode banner,
+/// a small bordered box for live subagents, or 0 when neither is active.
+fn activity_panel_height(app: &dyn TuiState, data: &info_widget::InfoWidgetData) -> u16 {
+    if app.plan_mode_active() {
+        return 1;
+    }
+    if let Some(info) = data.swarm_info.as_ref() {
+        // Mirror render_swarm_widget: members take precedence; otherwise an
+        // optional subagent line plus up to 3 session names are shown.
+        let rows = if !info.members.is_empty() {
+            info.members.len().min(3) as u16
+        } else {
+            u16::from(info.subagent_status.is_some()) + info.session_names.len().min(3) as u16
+        };
+        if rows > 0 {
+            // rows + stats line + rounded border (top/bottom).
+            return rows + 1 + 2;
+        }
+    }
+    0
+}
+
+/// Render the activity panel: a cyan plan-mode banner, or a color-coded box of
+/// live subagents (name · model · action · elapsed), just above the input.
+fn draw_activity_panel(
+    frame: &mut Frame,
+    app: &dyn TuiState,
+    data: &info_widget::InfoWidgetData,
+    area: Rect,
+) {
+    use crate::tui::color_support::rgb;
+    use ratatui::widgets::{Block, BorderType, Borders};
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+
+    if app.plan_mode_active() {
+        let line = Line::from(vec![
+            Span::styled(
+                "◆ PLAN MODE",
+                Style::default()
+                    .fg(rgb(120, 210, 230))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  ·  read-only  ·  ", Style::default().fg(rgb(120, 120, 130))),
+            Span::styled("/plan approve", Style::default().fg(rgb(238, 153, 200))),
+            Span::styled(" to execute", Style::default().fg(rgb(120, 120, 130))),
+        ]);
+        frame.render_widget(Paragraph::new(line), area);
+        return;
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(rgb(80, 80, 90)))
+        .title(Span::styled(
+            " subagents ",
+            Style::default().fg(rgb(255, 200, 100)),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let lines = info_widget::render_swarm_panel(data, inner);
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
 fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let area = frame.area().intersection(*frame.buffer_mut().area());
     if area.width == 0 || area.height == 0 {
@@ -1922,9 +1988,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let status_line_active = crate::config::config().status_line.is_active();
     // Usage strip consolidated into status bar — always hidden here.
     let usage_strip_height: u16 = 0;
+    // Activity panel (plan-mode banner OR live subagent box), shown just above the input.
+    let swarm_panel_height: u16 = activity_panel_height(app, &widget_data);
     let fixed_height = 1
         + queued_height
         + notification_height
+        + swarm_panel_height
         + inline_block_height
         + inline_ui_gap_height
         + input_height
@@ -2006,9 +2075,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Layout: messages (includes header), queued, status, notification, inline UI, gap, input,
     //         usage strip, donut, provider strip
     // All vertical chunks are within the chat_area (left column).
-    // chunks[0]=messages  chunks[1]=queued  chunks[2]=status  chunks[3]=notification
-    // chunks[4]=inline_ui chunks[5]=inline_gap chunks[6]=input  chunks[7]=usage_strip
-    // chunks[8]=donut      chunks[9]=provider_strip
+    // chunks[0]=messages  chunks[1]=queued     chunks[2]=status   chunks[3]=notification
+    // chunks[4]=activity   chunks[5]=inline_ui  chunks[6]=inline_gap chunks[7]=input
+    // chunks[8]=usage_strip chunks[9]=donut     chunks[10]=provider_strip
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if use_packed {
@@ -2017,12 +2086,13 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(queued_height),         // [1] Queued messages
                 Constraint::Length(1),                     // [2] Status line
                 Constraint::Length(notification_height),   // [3] Notification line
-                Constraint::Length(inline_block_height),   // [4] Inline UI
-                Constraint::Length(inline_ui_gap_height),  // [5] Inline UI/input spacing
-                Constraint::Length(input_height),          // [6] Input
-                Constraint::Length(usage_strip_height),    // [7] Usage strip (5h/Weekly)
-                Constraint::Length(donut_height),          // [8] Donut animation
-                Constraint::Length(provider_strip_height), // [9] Provider auth strip
+                Constraint::Length(swarm_panel_height),    // [4] Activity panel
+                Constraint::Length(inline_block_height),   // [5] Inline UI
+                Constraint::Length(inline_ui_gap_height),  // [6] Inline UI/input spacing
+                Constraint::Length(input_height),          // [7] Input
+                Constraint::Length(usage_strip_height),    // [8] Usage strip (5h/Weekly)
+                Constraint::Length(donut_height),          // [9] Donut animation
+                Constraint::Length(provider_strip_height), // [10] Provider auth strip
             ]
         } else {
             vec![
@@ -2030,12 +2100,13 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(queued_height),         // [1] Queued messages
                 Constraint::Length(1),                     // [2] Status line
                 Constraint::Length(notification_height),   // [3] Notification line
-                Constraint::Length(inline_block_height),   // [4] Inline UI
-                Constraint::Length(inline_ui_gap_height),  // [5] Inline UI/input spacing
-                Constraint::Length(input_height),          // [6] Input
-                Constraint::Length(usage_strip_height),    // [7] Usage strip (5h/Weekly)
-                Constraint::Length(donut_height),          // [8] Donut animation
-                Constraint::Length(provider_strip_height), // [9] Provider auth strip
+                Constraint::Length(swarm_panel_height),    // [4] Activity panel
+                Constraint::Length(inline_block_height),   // [5] Inline UI
+                Constraint::Length(inline_ui_gap_height),  // [6] Inline UI/input spacing
+                Constraint::Length(input_height),          // [7] Input
+                Constraint::Length(usage_strip_height),    // [8] Usage strip (5h/Weekly)
+                Constraint::Length(donut_height),          // [9] Donut animation
+                Constraint::Length(provider_strip_height), // [10] Provider auth strip
             ]
         })
         .split(chat_area);
@@ -2049,7 +2120,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             capture.layout.queued_area = Some(chunks[1].into());
         }
         capture.layout.status_area = Some(chunks[2].into());
-        capture.layout.input_area = Some(chunks[6].into());
+        capture.layout.input_area = Some(chunks[7].into());
         capture.layout.input_lines_raw = app.input().lines().count().max(1);
         capture.layout.input_lines_wrapped = base_input_height as usize;
 
@@ -2125,7 +2196,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         capture.layout.messages_area = Some(messages_area.into());
         capture.layout.diagram_area = diagram_area.map(|r| r.into());
     }
-    record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[6]));
+    record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[7]));
 
     let margins = draw_messages(
         frame,
@@ -2222,25 +2293,28 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     if notification_height > 0 {
         input_ui::draw_notification(frame, app, chunks[3]);
     }
+    if swarm_panel_height > 0 {
+        draw_activity_panel(frame, app, &widget_data, chunks[4]);
+    }
     if let Some(ref mut capture) = debug_capture {
         capture.render_order.push("draw_input".to_string());
     }
     // Draw inline UI if active
     if inline_block_height > 0 {
-        draw_inline_ui(frame, app, chunks[4]);
+        draw_inline_ui(frame, app, chunks[5]);
     }
 
     input_ui::draw_input(
         frame,
         app,
-        chunks[6],
+        chunks[7],
         user_count + pending_count + 1,
         &mut debug_capture,
     );
 
     // Inline usage strip — 5h/Weekly bars below the input (Claude Code style).
     if usage_strip_height > 0 {
-        let usage_area = chunks[7];
+        let usage_area = chunks[8];
         if let Some(info) = widget_data.usage_info.as_ref() {
             let line = info_widget::render_usage_inline_strip(info, usage_area.width);
             frame.render_widget(
@@ -2251,12 +2325,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
 
     if donut_height > 0 {
-        animations::draw_idle_animation(frame, app, chunks[8]);
+        animations::draw_idle_animation(frame, app, chunks[9]);
     }
 
     // Bottom strip — status bar with model, context %, tokens, rate limits.
     // When [status_line] hook is active, render its output instead.
-    let strip_area = chunks[9];
+    let strip_area = chunks[10];
     if strip_area.height > 0 && strip_area.width > 0 {
         let cfg = crate::config::config();
         if cfg.status_line.is_active() {

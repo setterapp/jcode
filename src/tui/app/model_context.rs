@@ -178,8 +178,11 @@ impl App {
                 self.upstream_provider = None;
                 self.status_detail = None;
                 self.update_context_limit_for_model(&next_model);
-                self.session.model = Some(self.provider.model());
+                let active_model = self.provider.model();
+                self.session.model = Some(active_model.clone());
                 let _ = self.session.save();
+                // Persist as the cross-session default for new sessions.
+                let _ = crate::config::Config::set_default_model_only(Some(&active_model));
                 self.push_display_message(DisplayMessage::system(format!(
                     "✓ Switched to model: {}",
                     next_model
@@ -933,6 +936,8 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
                 app.update_context_limit_for_model(&active_model);
                 app.session.model = Some(active_model.clone());
                 let _ = app.session.save();
+                // Persist as the cross-session default for new sessions.
+                let _ = crate::config::Config::set_default_model_only(Some(&active_model));
                 app.push_display_message(DisplayMessage {
                     role: "system".to_string(),
                     content: format!("✓ Switched to model: {}", active_model),

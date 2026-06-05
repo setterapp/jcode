@@ -42,6 +42,12 @@ use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Paragraph},
 };
+
+/// Public entry for rendering swarm/subagent rows into a caller-owned area
+/// (used by the bottom activity panel in `ui.rs`).
+pub(crate) fn render_swarm_panel(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
+    swarm_background::render_swarm_widget(data, inner)
+}
 use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;

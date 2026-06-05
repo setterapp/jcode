@@ -144,6 +144,8 @@ pub trait TuiState {
     fn command_suggestions(&self) -> Vec<(String, &'static str)>;
     fn active_skill(&self) -> Option<String>;
     fn subagent_status(&self) -> Option<String>;
+    /// Whether `/plan` read-only planning mode is active for this session.
+    fn plan_mode_active(&self) -> bool;
     /// Progress of a currently-running batch tool call.
     fn batch_progress(&self) -> Option<crate::bus::BatchProgress>;
     fn time_since_activity(&self) -> Option<Duration>;

@@ -811,7 +811,13 @@ impl App {
                                             graceful_shutdown_signal: None,
                                             execution_mode: crate::tool::ToolExecutionMode::AgentTurn,
                                         };
-                                        let tool_result = self.registry.execute(&tool_name, input, ctx).await;
+                                        let tool_result = if let Some(block_msg) =
+                                            self.plan_mode_block(&tool_name)
+                                        {
+                                            Err(anyhow::anyhow!(block_msg))
+                                        } else {
+                                            self.registry.execute(&tool_name, input, ctx).await
+                                        };
                                         crate::telemetry::record_tool_call();
                                         if tool_result.is_err() {
                                             crate::telemetry::record_tool_failure();
@@ -1090,9 +1096,14 @@ impl App {
                 // Subscribe to bus for subagent status updates
                 let mut bus_receiver = Bus::global().subscribe();
                 self.subagent_status = None; // Clear previous status
+                self.subagent_model = None;
                 self.batch_progress = None; // Clear previous batch progress
 
-                let result = loop {
+                // In `/plan` read-only mode, block mutating tools before execution.
+                let result = if let Some(block_msg) = self.plan_mode_block(&tool_name) {
+                    Err(anyhow::anyhow!(block_msg))
+                } else {
+                    loop {
                     tokio::select! {
                         biased;
                         // Handle keyboard input while tool executes
@@ -1163,6 +1174,7 @@ impl App {
                             match bus_event {
                                 Ok(BusEvent::SubagentStatus(status)) => {
                                     if status.session_id == self.session.id {
+                                        self.subagent_model = status.model.clone();
                                         let display = if let Some(model) = &status.model {
                                             format!("{} · {}", status.status, model)
                                         } else {
@@ -1201,9 +1213,11 @@ impl App {
                             break result;
                         }
                     }
+                    }
                 };
 
                 self.subagent_status = None; // Clear status after tool completes
+                self.subagent_model = None;
                 self.batch_progress = None; // Clear batch progress after tool completes
                 let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let (output, is_error, tool_title) = match result {

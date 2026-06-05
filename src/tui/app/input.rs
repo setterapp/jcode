@@ -1275,8 +1275,11 @@ pub(super) fn handle_modal_key(
                         app.upstream_provider = None;
                         app.status_detail = None;
                         app.update_context_limit_for_model(&model);
-                        app.session.model = Some(app.provider.model());
+                        let active_model = app.provider.model();
+                        app.session.model = Some(active_model.clone());
                         let _ = app.session.save();
+                        // Persist as the cross-session default for new sessions.
+                        let _ = crate::config::Config::set_default_model_only(Some(&active_model));
                         app.push_display_message(crate::tui::DisplayMessage::system(
                             format!("✓ Switched to model: {}", model),
                         ));

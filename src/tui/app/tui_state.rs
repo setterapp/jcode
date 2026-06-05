@@ -464,6 +464,10 @@ impl crate::tui::TuiState for App {
         self.subagent_status.clone()
     }
 
+    fn plan_mode_active(&self) -> bool {
+        self.plan_mode.is_some()
+    }
+
     fn batch_progress(&self) -> Option<crate::bus::BatchProgress> {
         self.batch_progress.clone()
     }
@@ -909,7 +913,7 @@ impl crate::tui::TuiState for App {
 
         let memory_info = gather_memory_info(self.memory_enabled);
 
-        // Gather swarm info
+        // Gather swarm info (drives the bottom subagent activity panel).
         let swarm_info = if self.swarm_enabled {
             let subagent_status = self.subagent_status.clone();
             let mut members: Vec<crate::protocol::SwarmMemberStatus> = Vec::new();
@@ -964,6 +968,13 @@ impl crate::tui::TuiState for App {
                 let detail = subagent_status.clone().or(detail);
                 let has_activity = status != "ready" || detail.is_some();
                 if has_activity {
+                    let started_at_unix_ms = self.processing_started.map(|t| {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        now.saturating_sub(t.elapsed().as_millis() as u64)
+                    });
                     members.push(crate::protocol::SwarmMemberStatus {
                         session_id: self.session.id.clone(),
                         friendly_name: Some(self.session.display_name().to_string()),
@@ -973,6 +984,11 @@ impl crate::tui::TuiState for App {
                         is_headless: Some(false),
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
+                        model: self
+                            .subagent_model
+                            .clone()
+                            .or_else(|| self.session.model.clone()),
+                        started_at_unix_ms,
                     });
                 }
                 (
