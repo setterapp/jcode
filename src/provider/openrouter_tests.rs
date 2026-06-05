@@ -133,6 +133,40 @@ fn named_openai_compatible_provider_sets_catalog_cache_namespace() {
 }
 
 #[test]
+fn named_openai_compatible_provider_supports_reasoning_effort() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
+    let _key = EnvVarGuard::set("TEST_NAMED_COMPAT_KEY", "test-key");
+
+    let profile = crate::config::NamedProviderConfig {
+        base_url: "https://api.deepseek.com".to_string(),
+        api_key_env: Some("TEST_NAMED_COMPAT_KEY".to_string()),
+        default_model: Some("deepseek-v4-flash".to_string()),
+        ..Default::default()
+    };
+
+    let provider = OpenRouterProvider::new_named_openai_compatible("deepseek", &profile)
+        .expect("named profile should initialize");
+
+    // Direct profiles expose the graded vocabulary (incl. xhigh -> DeepSeek "max").
+    let efforts = provider.available_efforts();
+    assert!(!efforts.is_empty());
+    assert!(efforts.contains(&"high") && efforts.contains(&"xhigh"));
+
+    // set/get round-trips; "none" clears it.
+    assert_eq!(provider.reasoning_effort(), None);
+    provider.set_reasoning_effort("high").unwrap();
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("high"));
+    provider.set_reasoning_effort("xhigh").unwrap();
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("xhigh"));
+    provider.set_reasoning_effort("none").unwrap();
+    assert_eq!(provider.reasoning_effort(), None);
+
+    // Unknown levels are rejected.
+    assert!(provider.set_reasoning_effort("turbo").is_err());
+}
+
+#[test]
 fn named_openai_compatible_provider_exposes_static_models_as_routes() {
     let _lock = ENV_LOCK.lock().unwrap();
     let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
@@ -411,6 +445,7 @@ fn make_provider() -> OpenRouterProvider {
         provider_routing: Arc::new(RwLock::new(ProviderRouting::default())),
         provider_pin: Arc::new(Mutex::new(None)),
         endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
+        reasoning_effort: Arc::new(Mutex::new(None)),
     }
 }
 
@@ -436,6 +471,7 @@ fn make_custom_compatible_provider() -> OpenRouterProvider {
         provider_routing: Arc::new(RwLock::new(ProviderRouting::default())),
         provider_pin: Arc::new(Mutex::new(None)),
         endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
+        reasoning_effort: Arc::new(Mutex::new(None)),
     }
 }
 

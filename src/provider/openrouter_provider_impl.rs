@@ -532,6 +532,20 @@ impl Provider for OpenRouterProvider {
             });
         }
 
+        // Reasoning effort. Direct OpenAI-compatible profiles (DeepSeek, Z.AI)
+        // take a top-level `reasoning_effort` (high|max) plus `thinking`; the
+        // canonical OpenRouter aggregator takes a graded `reasoning.effort`.
+        if let Some(effort) = self.reasoning_effort() {
+            if self.profile_id.is_some() {
+                // DeepSeek vocabulary: low/medium/high -> "high", xhigh -> "max".
+                let mapped = if effort == "xhigh" { "max" } else { "high" };
+                request["reasoning_effort"] = serde_json::json!(mapped);
+                request["thinking"] = serde_json::json!({ "type": "enabled" });
+            } else {
+                request["reasoning"] = serde_json::json!({ "effort": effort });
+            }
+        }
+
         // Add provider routing if configured and supported by backend.
         let mut provider_obj = None;
         if self.supports_provider_features {
@@ -891,6 +905,43 @@ impl Provider for OpenRouterProvider {
             .unwrap_or(crate::provider::DEFAULT_CONTEXT_LIMIT)
     }
 
+    fn reasoning_effort(&self) -> Option<String> {
+        self.reasoning_effort
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|p| p.into_inner().clone())
+    }
+
+    fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
+        if self.available_efforts().is_empty() {
+            anyhow::bail!("Reasoning effort is not supported for this provider/model");
+        }
+        let normalized = match effort.trim().to_ascii_lowercase().as_str() {
+            "low" | "medium" | "high" | "xhigh" => Some(effort.trim().to_ascii_lowercase()),
+            "none" | "" => None,
+            other => anyhow::bail!(
+                "Unknown effort level: {} (expected low|medium|high|xhigh|none)",
+                other
+            ),
+        };
+        match self.reasoning_effort.lock() {
+            Ok(mut g) => *g = normalized,
+            Err(p) => *p.into_inner() = normalized,
+        }
+        Ok(())
+    }
+
+    fn available_efforts(&self) -> Vec<&'static str> {
+        // Direct OpenAI-compatible profiles (DeepSeek, Z.AI, ...) accept a
+        // top-level `reasoning_effort`; the canonical OpenRouter aggregator
+        // accepts `reasoning.effort`. Both honor the graded vocabulary.
+        if self.profile_id.is_some() || self.supports_provider_features {
+            vec!["none", "low", "medium", "high", "xhigh"]
+        } else {
+            vec![]
+        }
+    }
+
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(Self {
             client: self.client.clone(),
@@ -917,6 +968,7 @@ impl Provider for OpenRouterProvider {
             provider_pin: Arc::new(Mutex::new(None)),
             endpoints_cache: Arc::clone(&self.endpoints_cache),
             endpoint_refresh: Arc::clone(&self.endpoint_refresh),
+            reasoning_effort: Arc::new(Mutex::new(self.reasoning_effort())),
         })
     }
 }

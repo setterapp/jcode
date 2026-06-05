@@ -520,6 +520,10 @@ pub struct OpenRouterProvider {
     endpoints_cache: Arc<RwLock<EndpointsCache>>,
     /// Background refresh state for per-model endpoint data
     endpoint_refresh: Arc<Mutex<EndpointRefreshTracker>>,
+    /// Selected reasoning effort (none/low/medium/high/xhigh). Applies to
+    /// OpenAI-compatible profiles via top-level `reasoning_effort`, and to the
+    /// canonical OpenRouter aggregator via `reasoning.effort`.
+    reasoning_effort: Arc<Mutex<Option<String>>>,
 }
 
 impl OpenRouterProvider {
@@ -641,6 +645,7 @@ impl OpenRouterProvider {
             provider_pin: Arc::new(Mutex::new(None)),
             endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
             endpoint_refresh: Arc::new(Mutex::new(EndpointRefreshTracker::default())),
+            reasoning_effort: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -753,6 +758,7 @@ impl OpenRouterProvider {
             provider_pin: Arc::new(Mutex::new(None)),
             endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
             endpoint_refresh: Arc::new(Mutex::new(EndpointRefreshTracker::default())),
+            reasoning_effort: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -916,6 +922,7 @@ impl OpenRouterProvider {
                 provider_pin: Arc::new(Mutex::new(None)),
                 endpoints_cache,
                 endpoint_refresh: Arc::clone(&refresh_state),
+                reasoning_effort: Arc::new(Mutex::new(None)),
             };
 
             match provider.fetch_endpoints(&model_name).await {
