@@ -578,6 +578,10 @@ pub(super) fn parse_manual_subagent_spec(rest: &str) -> Result<ManualSubagentSpe
 }
 
 fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
+    if let Some(msg) = app.plan_mode_block("subagent") {
+        app.push_display_message(DisplayMessage::system(msg));
+        return;
+    }
     let description = derive_subagent_description(&spec.prompt);
     let tool_call = crate::message::ToolCall {
         id: id::new_id("call"),
@@ -1166,6 +1170,14 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || handle_judge_command_local(app, trimmed)
         || handle_selfdev_command(app, trimmed)
     {
+        return true;
+    }
+
+    if let Some(command) = super::commands_plan::parse_plan_command(trimmed) {
+        match command {
+            Ok(command) => super::commands_plan::handle_plan_command_local(app, command),
+            Err(error) => app.push_display_message(DisplayMessage::error(error)),
+        }
         return true;
     }
 

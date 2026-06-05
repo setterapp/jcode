@@ -78,23 +78,91 @@ fn swarm_role_prefix(member: &SwarmMemberStatus) -> &'static str {
     }
 }
 
+/// Stale threshold: a running member that hasn't changed status in this many
+/// seconds is considered possibly stuck and highlighted in orange.
+const SWARM_STALE_SECS: u64 = 45;
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// Shorten a model id for badge display: drop provider prefix and version noise.
+fn model_short(model: &str) -> String {
+    model.rsplit('/').next().unwrap_or(model).to_string()
+}
+
+/// Format elapsed millis as `m:ss` (or `h:mm:ss` past an hour).
+fn format_elapsed(started_at_unix_ms: u64) -> String {
+    let now = now_unix_ms();
+    let secs = now.saturating_sub(started_at_unix_ms) / 1000;
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{}:{:02}:{:02}", h, m, s)
+    } else {
+        format!("{}:{:02}", m, s)
+    }
+}
+
+fn member_is_stale(member: &SwarmMemberStatus) -> bool {
+    member.status == "running"
+        && member
+            .status_age_secs
+            .map(|s| s > SWARM_STALE_SECS)
+            .unwrap_or(false)
+}
+
 fn swarm_member_line(member: &SwarmMemberStatus, max_width: usize) -> Line<'static> {
     let name = swarm_member_label(member);
-    let mut detail = member.detail.clone().unwrap_or_default();
-    if !detail.is_empty() {
-        detail = format!(" — {}", detail);
-    }
     let role_prefix = swarm_role_prefix(member);
-    let line_text = truncate_smart(&format!("{} {}{}", name, member.status, detail), max_width);
-    let (color, icon) = swarm_status_style(&member.status);
-    Line::from(vec![
-        Span::styled(
-            role_prefix.to_string(),
-            Style::default().fg(rgb(255, 200, 100)),
-        ),
-        Span::styled(format!("{} ", icon), Style::default().fg(color)),
-        Span::styled(line_text, Style::default().fg(rgb(140, 140, 150))),
-    ])
+    let (status_color, icon) = swarm_status_style(&member.status);
+    let stale = member_is_stale(member);
+
+    let mut spans: Vec<Span> = vec![
+        Span::styled(role_prefix.to_string(), Style::default().fg(rgb(255, 200, 100))),
+        Span::styled(format!("{} ", icon), Style::default().fg(status_color)),
+        Span::styled(name, Style::default().fg(rgb(210, 210, 220))),
+    ];
+
+    // Model badge (pink), distinct from the action text.
+    if let Some(model) = member.model.as_deref() {
+        spans.push(Span::styled(
+            format!("  {}", model_short(model)),
+            Style::default().fg(rgb(238, 153, 200)),
+        ));
+    }
+
+    // Action / current detail (dim), space-budgeted against the row width.
+    // Reserve room for the trailing elapsed time (~9) and stale marker (~2).
+    if let Some(detail) = member.detail.as_deref().filter(|d| !d.is_empty()) {
+        let used = name_len(member) + 4 + 12;
+        let budget = max_width.saturating_sub(used).max(8);
+        spans.push(Span::styled(
+            format!("  {}", truncate_smart(detail, budget)),
+            Style::default().fg(rgb(140, 140, 150)),
+        ));
+    }
+
+    // Elapsed time (cyan, or orange when stale), plus a stale marker.
+    if let Some(started) = member.started_at_unix_ms {
+        let elapsed_color = if stale { rgb(220, 160, 60) } else { rgb(120, 175, 230) };
+        spans.push(Span::styled(
+            format!("  {}", format_elapsed(started)),
+            Style::default().fg(elapsed_color),
+        ));
+    }
+    if stale {
+        spans.push(Span::styled(" ⚠", Style::default().fg(rgb(220, 160, 60))));
+    }
+
+    Line::from(spans)
+}
+
+fn name_len(member: &SwarmMemberStatus) -> usize {
+    swarm_member_label(member).chars().count()
+        + member.model.as_deref().map(|m| model_short(m).chars().count() + 2).unwrap_or(0)
 }
 
 fn render_swarm_stats_line(info: &SwarmInfo) -> Line<'static> {

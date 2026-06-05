@@ -106,6 +106,9 @@ impl App {
             "refactor" => {
                 "`/refactor [focus]`\nStart a refactor loop aimed at moving the repo toward a practical 10/10. The main agent inspects the project, writes a ranked refactor todo list, implements the best safe refactors itself, validates each batch, and asks one independent read-only subagent to review each meaningful batch before continuing.\n\n`/refactor plan [focus]`\nGenerate a ranked refactor todo list only, without editing files.\n\n`/refactor resume`\nResume the last saved refactor mode for this session using the current refactor todos.\n\n`/refactor status`\nShow the inferred status of the current refactor run and todo batch.\n\n`/refactor stop`\nAsk the model to stop after the next safe point, update todos, and summarize remaining work."
             }
+            "plan" => {
+                "`/plan [what to plan]`\nEnter read-only plan mode. File edits, patches, the side panel, memory writes, and subagents are blocked at the tool level — the agent can only inspect, search, and present a plan. A cyan PLAN MODE banner shows above the input while active.\n\n`/plan approve`\nWrite the latest plan to `.jcode/plans/`, leave plan mode, and execute it.\n\n`/plan off`\nLeave plan mode without executing.\n\n`/plan status`\nShow whether plan mode is active and where an approved plan will be written."
+            }
             "reload" => {
                 "`/reload`\nReload into the newest available binary if one is ready. This is fast and does not rebuild."
             }

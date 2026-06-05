@@ -82,13 +82,20 @@ impl Agent {
     }
 
     pub fn subagent_model(&self) -> Option<String> {
-        self.session.subagent_model.clone()
+        self.session
+            .subagent_model
+            .clone()
+            .or_else(|| crate::config::config().provider.subagent_model.clone())
     }
 
     pub fn set_subagent_model(&mut self, model: Option<String>) -> Result<()> {
-        self.session.subagent_model = model;
+        self.session.subagent_model = model.clone();
         self.log_env_snapshot("set_subagent_model");
         self.session.save()?;
+        // Persist as the cross-session default, mirroring `set_default_model`.
+        if let Err(err) = crate::config::Config::set_subagent_model(model.as_deref()) {
+            crate::logging::warn(&format!("Failed to persist default subagent model: {err}"));
+        }
         Ok(())
     }
 

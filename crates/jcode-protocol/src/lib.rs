@@ -1389,6 +1389,12 @@ pub struct SwarmMemberStatus {
     /// Seconds since the last status change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
+    /// AI model/provider identifier driving this member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// When this member started working (unix epoch millis).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at_unix_ms: Option<u64>,
 }
 
 /// Status of a member being awaited by comm_await_members

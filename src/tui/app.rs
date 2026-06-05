@@ -55,6 +55,7 @@ mod catchup;
 mod commands;
 mod commands_improve;
 mod commands_overnight;
+mod commands_plan;
 mod commands_review;
 mod conversation_state;
 mod copy_selection;
@@ -454,6 +455,16 @@ impl ImproveMode {
     }
 }
 
+/// Active `/plan` (read-only planning) mode state for the current session.
+#[derive(Debug, Clone)]
+pub(super) struct PlanModeState {
+    /// Where the approved plan will be written on `/plan approve`.
+    pub(super) plan_file: std::path::PathBuf,
+    /// Count of session messages when plan mode was entered. The approved plan
+    /// captures only assistant text produced after this point.
+    pub(super) entry_msg_count: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum MouseScrollTarget {
     Chat,
@@ -605,6 +616,8 @@ pub struct App {
     status: ProcessingStatus,
     // Subagent status (shown during Task tool execution)
     subagent_status: Option<String>,
+    // Raw model id of the currently-running subagent, for the activity panel badge.
+    subagent_model: Option<String>,
     // Batch progress (shown during batch tool execution)
     batch_progress: Option<crate::bus::BatchProgress>,
     processing_started: Option<Instant>,
@@ -770,6 +783,8 @@ pub struct App {
     autojudge_enabled: bool,
     // Last requested `/improve` mode for this session.
     improve_mode: Option<ImproveMode>,
+    // Active `/plan` mode for this session (read-only planning). None = inactive.
+    plan_mode: Option<PlanModeState>,
     // Suppress duplicate memory injection messages for near-identical prompts.
     last_injected_memory_signature: Option<(String, Instant)>,
     // Swarm feature toggle for this session

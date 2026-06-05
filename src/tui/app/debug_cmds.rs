@@ -127,6 +127,8 @@ impl App {
                         is_headless: Some(false),
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
+                        model: None,
+                        started_at_unix_ms: None,
                     }],
                 })
                 .to_string()

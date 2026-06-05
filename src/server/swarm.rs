@@ -264,6 +264,10 @@ async fn broadcast_swarm_status_now(
                     is_headless: Some(m.is_headless),
                     live_attachments: Some(m.event_txs.len()),
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
+                    model: None,
+                    started_at_unix_ms: Some(
+                        now_unix_ms().saturating_sub(m.joined_at.elapsed().as_millis() as u64),
+                    ),
                 })
         })
         .collect();

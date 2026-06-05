@@ -916,6 +916,10 @@ impl TuiState for BenchState {
         None
     }
 
+    fn plan_mode_active(&self) -> bool {
+        false
+    }
+
     fn batch_progress(&self) -> Option<jcode::bus::BatchProgress> {
         None
     }

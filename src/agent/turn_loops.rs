@@ -764,10 +764,35 @@ impl Agent {
                 logging::info(&format!("Tool starting: {}", tc.name));
                 let tool_start = Instant::now();
 
-                // Publish status for TUI to show during Task execution
+                // Publish status for TUI to show during Task execution. Include a
+                // short arg preview so the user sees exactly what the (sub)agent is
+                // doing, e.g. "running bash: npm run test" instead of "running bash".
+                fn running_status(name: &str, input: &serde_json::Value) -> String {
+                    let detail = input
+                        .get("command")
+                        .or_else(|| input.get("pattern"))
+                        .or_else(|| input.get("query"))
+                        .or_else(|| input.get("file_path"))
+                        .or_else(|| input.get("path"))
+                        .or_else(|| input.get("description"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| {
+                            let first_line = s.trim().lines().next().unwrap_or("").trim();
+                            if first_line.chars().count() > 60 {
+                                let head: String = first_line.chars().take(57).collect();
+                                format!("{head}…")
+                            } else {
+                                first_line.to_string()
+                            }
+                        });
+                    match detail {
+                        Some(d) if !d.is_empty() => format!("running {name}: {d}"),
+                        _ => format!("running {name}"),
+                    }
+                }
                 Bus::global().publish(BusEvent::SubagentStatus(SubagentStatus {
                     session_id: self.session.id.clone(),
-                    status: format!("running {}", tc.name),
+                    status: running_status(&tc.name, &tc.input),
                     model: Some(self.provider.model()),
                 }));
 

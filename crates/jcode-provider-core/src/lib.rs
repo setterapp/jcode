@@ -466,6 +466,11 @@ pub struct RouteCheapnessEstimate {
     pub output_price_per_mtok_micros: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_read_price_per_mtok_micros: Option<u64>,
+    /// Price per Mtok for writing/creating a prompt cache entry. Anthropic
+    /// charges 1.25x input (5-min TTL); providers without a write premium
+    /// (e.g. DeepSeek) leave this `None` and bill cache writes as normal input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_price_per_mtok_micros: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub included_requests_per_month: Option<u64>,
     pub reference_input_tokens: u64,
@@ -493,6 +498,7 @@ impl RouteCheapnessEstimate {
             input_price_per_mtok_micros: Some(input_price_per_mtok_micros),
             output_price_per_mtok_micros: Some(output_price_per_mtok_micros),
             cache_read_price_per_mtok_micros,
+            cache_write_price_per_mtok_micros: None,
             included_requests_per_month: None,
             reference_input_tokens: CHEAPNESS_REFERENCE_INPUT_TOKENS,
             reference_output_tokens: CHEAPNESS_REFERENCE_OUTPUT_TOKENS,
@@ -519,6 +525,7 @@ impl RouteCheapnessEstimate {
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
             cache_read_price_per_mtok_micros: None,
+            cache_write_price_per_mtok_micros: None,
             included_requests_per_month,
             reference_input_tokens: CHEAPNESS_REFERENCE_INPUT_TOKENS,
             reference_output_tokens: CHEAPNESS_REFERENCE_OUTPUT_TOKENS,
@@ -544,12 +551,19 @@ impl RouteCheapnessEstimate {
             input_price_per_mtok_micros: None,
             output_price_per_mtok_micros: None,
             cache_read_price_per_mtok_micros: None,
+            cache_write_price_per_mtok_micros: None,
             included_requests_per_month,
             reference_input_tokens: CHEAPNESS_REFERENCE_INPUT_TOKENS,
             reference_output_tokens: CHEAPNESS_REFERENCE_OUTPUT_TOKENS,
             estimated_reference_cost_micros,
             note: note.into(),
         }
+    }
+
+    /// Attach a prompt-cache write price (per Mtok, in micros).
+    pub fn with_cache_write(mut self, cache_write_price_per_mtok_micros: u64) -> Self {
+        self.cache_write_price_per_mtok_micros = Some(cache_write_price_per_mtok_micros);
+        self
     }
 }
 

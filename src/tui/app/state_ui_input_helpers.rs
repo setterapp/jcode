@@ -66,7 +66,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     // Per-task model slots — see [task_models.assignments] in config.toml.
     // Each `/<slot> <prompt>` swaps to that slot's model for one turn then
     // restores. Custom slots (e.g. /architect) work too without showing here.
-    RegisteredCommand::public("/plan", "Run a planning prompt with the [task_models] plan model"),
+    RegisteredCommand::public("/plan", "Read-only plan mode: blocks edits/subagents. /plan approve to execute, /plan off to cancel"),
     RegisteredCommand::public("/code", "Run a coding prompt with the [task_models] code model"),
     RegisteredCommand::public("/read", "Read/summarize files with the [task_models] read model"),
     RegisteredCommand::public("/debug", "Debug a problem with the [task_models] debug model"),
