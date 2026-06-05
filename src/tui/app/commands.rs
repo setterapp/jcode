@@ -715,6 +715,8 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
     if matches!(rest, "inherit" | "reset" | "clear") {
         app.session.subagent_model = None;
         let _ = app.session.save();
+        // Persist to config so new sessions inherit by default (cross-session).
+        let _ = crate::config::Config::set_subagent_model(None);
         app.push_display_message(DisplayMessage::system(format!(
             "Subagent model reset to inherit the current model (`{}`).",
             app.provider.model()
@@ -725,8 +727,10 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
 
     app.session.subagent_model = Some(rest.to_string());
     let _ = app.session.save();
+    // Persist to config so new sessions default to this subagent model (cross-session).
+    let _ = crate::config::Config::set_subagent_model(Some(rest));
     app.push_display_message(DisplayMessage::system(format!(
-        "Subagent model pinned to `{}` for this session.",
+        "Subagent model pinned to `{}` (persists across sessions).",
         rest
     )));
     app.set_status_notice(format!("Subagent model → {}", rest));
