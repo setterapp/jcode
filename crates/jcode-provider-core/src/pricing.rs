@@ -15,54 +15,71 @@ pub fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     let base = model.strip_suffix("[1m]").unwrap_or(model);
     let long_context = model.ends_with("[1m]");
     match base {
-        "claude-opus-4-6" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(if long_context { 10.0 } else { 5.0 }),
-            usd_to_micros(if long_context { 37.5 } else { 25.0 }),
-            Some(usd_to_micros(if long_context { 1.0 } else { 0.5 })),
-            Some(if long_context {
-                "Anthropic API long-context pricing".to_string()
-            } else {
-                "Anthropic API pricing".to_string()
-            }),
-        )),
-        "claude-sonnet-4-6" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(if long_context { 6.0 } else { 3.0 }),
-            usd_to_micros(if long_context { 22.5 } else { 15.0 }),
-            Some(usd_to_micros(if long_context { 0.6 } else { 0.3 })),
-            Some(if long_context {
-                "Anthropic API long-context pricing".to_string()
-            } else {
-                "Anthropic API pricing".to_string()
-            }),
-        )),
-        "claude-haiku-4-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(1.0),
-            usd_to_micros(5.0),
-            Some(usd_to_micros(0.1)),
-            Some("Anthropic API pricing".to_string()),
-        )),
-        "claude-opus-4-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Medium,
-            usd_to_micros(5.0),
-            usd_to_micros(25.0),
-            Some(usd_to_micros(0.5)),
-            Some("Estimated from Opus 4.6 API pricing".to_string()),
-        )),
-        "claude-sonnet-4-5" | "claude-sonnet-4-20250514" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Medium,
-            usd_to_micros(3.0),
-            usd_to_micros(15.0),
-            Some(usd_to_micros(0.3)),
-            Some("Estimated from Sonnet 4.6 API pricing".to_string()),
-        )),
+        // Opus 4.6/4.7/4.8 share the $5/$25 metered rate (cache read $0.50,
+        // cache write 1.25x input). Long-context [1m] doubles input/output.
+        "claude-opus-4-8" | "claude-opus-4-7" | "claude-opus-4-6" => Some(
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::PublicApiPricing,
+                RouteCostConfidence::Exact,
+                usd_to_micros(if long_context { 10.0 } else { 5.0 }),
+                usd_to_micros(if long_context { 37.5 } else { 25.0 }),
+                Some(usd_to_micros(if long_context { 1.0 } else { 0.5 })),
+                Some(if long_context {
+                    "Anthropic API long-context pricing".to_string()
+                } else {
+                    "Anthropic API pricing".to_string()
+                }),
+            )
+            .with_cache_write(usd_to_micros(if long_context { 12.5 } else { 6.25 })),
+        ),
+        "claude-sonnet-4-6" => Some(
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::PublicApiPricing,
+                RouteCostConfidence::Exact,
+                usd_to_micros(if long_context { 6.0 } else { 3.0 }),
+                usd_to_micros(if long_context { 22.5 } else { 15.0 }),
+                Some(usd_to_micros(if long_context { 0.6 } else { 0.3 })),
+                Some(if long_context {
+                    "Anthropic API long-context pricing".to_string()
+                } else {
+                    "Anthropic API pricing".to_string()
+                }),
+            )
+            .with_cache_write(usd_to_micros(if long_context { 7.5 } else { 3.75 })),
+        ),
+        "claude-haiku-4-5" => Some(
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::PublicApiPricing,
+                RouteCostConfidence::Exact,
+                usd_to_micros(1.0),
+                usd_to_micros(5.0),
+                Some(usd_to_micros(0.1)),
+                Some("Anthropic API pricing".to_string()),
+            )
+            .with_cache_write(usd_to_micros(1.25)),
+        ),
+        "claude-opus-4-5" => Some(
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::Heuristic,
+                RouteCostConfidence::Medium,
+                usd_to_micros(5.0),
+                usd_to_micros(25.0),
+                Some(usd_to_micros(0.5)),
+                Some("Estimated from Opus 4.6 API pricing".to_string()),
+            )
+            .with_cache_write(usd_to_micros(6.25)),
+        ),
+        "claude-sonnet-4-5" | "claude-sonnet-4-20250514" => Some(
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::Heuristic,
+                RouteCostConfidence::Medium,
+                usd_to_micros(3.0),
+                usd_to_micros(15.0),
+                Some(usd_to_micros(0.3)),
+                Some("Estimated from Sonnet 4.6 API pricing".to_string()),
+            )
+            .with_cache_write(usd_to_micros(3.75)),
+        ),
         _ => None,
     }
 }
@@ -126,7 +143,15 @@ pub fn anthropic_oauth_pricing(model: &str, subscription: Option<&str>) -> Route
 pub fn openai_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     let base = model.strip_suffix("[1m]").unwrap_or(model);
     match base {
-        "gpt-5.5" | "gpt-5.4" | "gpt-5.4-pro" => Some(RouteCheapnessEstimate::metered(
+        "gpt-5.5" => Some(RouteCheapnessEstimate::metered(
+            RouteCostSource::PublicApiPricing,
+            RouteCostConfidence::High,
+            usd_to_micros(5.0),
+            usd_to_micros(30.0),
+            Some(usd_to_micros(0.5)),
+            Some("OpenAI API pricing".to_string()),
+        )),
+        "gpt-5.4" | "gpt-5.4-pro" => Some(RouteCheapnessEstimate::metered(
             RouteCostSource::PublicApiPricing,
             RouteCostConfidence::High,
             usd_to_micros(2.5),
@@ -220,6 +245,54 @@ pub fn copilot_pricing(model: &str, zero_premium_mode: bool) -> RouteCheapnessEs
             "Copilot estimate using Pro included premium requests".to_string()
         }),
     )
+}
+
+/// Hardcoded public API pricing for direct OpenAI-compatible providers
+/// (DeepSeek, Z.AI/GLM, Moonshot/Kimi) whose own `/models` endpoint does not
+/// return token prices, so the OpenRouter catalog path yields nothing. Prices
+/// in USD per Mtok; `input` is the cache-miss rate and `cache_read` is the
+/// provider's cache-hit input rate.
+pub fn direct_compatible_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
+    let m = model.trim().to_ascii_lowercase();
+    let metered = |input: f64, output: f64, cache_read: Option<f64>, note: &str| {
+        Some(RouteCheapnessEstimate::metered(
+            RouteCostSource::PublicApiPricing,
+            RouteCostConfidence::High,
+            usd_to_micros(input),
+            usd_to_micros(output),
+            cache_read.map(usd_to_micros),
+            Some(note.to_string()),
+        ))
+    };
+
+    if m.contains("deepseek") {
+        if m.contains("v4-flash") || m.contains("v4flash") {
+            return metered(0.14, 0.28, Some(0.0028), "DeepSeek V4 Flash API pricing");
+        }
+        if m.contains("v4") {
+            return metered(0.435, 0.87, Some(0.003625), "DeepSeek V4 Pro API pricing");
+        }
+        return metered(0.28, 0.42, Some(0.028), "DeepSeek API pricing (estimated)");
+    }
+
+    if m.contains("glm") || m.contains("zai") || m.contains("z-ai") {
+        if m.contains("4.7") || m.contains("4-7") || m.contains("5.1") || m.contains("51") {
+            return metered(0.40, 1.75, None, "Z.AI GLM-4.7 API pricing");
+        }
+        if m.contains("4.6") || m.contains("4-6") {
+            return metered(0.50, 2.00, None, "Z.AI GLM-4.6 API pricing (estimated)");
+        }
+        return metered(0.60, 2.20, None, "Z.AI GLM-4.5 API pricing");
+    }
+
+    if m.contains("kimi") || m.contains("moonshot") || m.contains("k2") {
+        if m.contains("k2.6") || m.contains("k2-6") {
+            return metered(0.95, 4.0, Some(0.16), "Moonshot Kimi K2.6 API pricing");
+        }
+        return metered(0.60, 3.0, Some(0.10), "Moonshot Kimi K2.5 API pricing");
+    }
+
+    None
 }
 
 pub fn openrouter_pricing_from_token_prices(

@@ -84,30 +84,88 @@ impl App {
     pub(super) fn update_cost_impl(&mut self) {
         let provider_name = self.provider.name().to_lowercase();
 
-        // Only calculate cost for API-key providers
+        // Only metered API-key providers have a per-token cost to show.
         if !provider_name.contains("openrouter")
             && !provider_name.contains("anthropic")
+            && !provider_name.contains("claude")
             && !provider_name.contains("openai")
         {
             return;
         }
 
-        // For OAuth providers, cost is already tracked in subscription
+        // OAuth (subscription) cost is amortized in the plan, not metered.
         let is_oauth = (provider_name.contains("anthropic") || provider_name.contains("claude"))
             && std::env::var("ANTHROPIC_API_KEY").is_err();
         if is_oauth {
             return;
         }
 
-        // Default pricing (will be cached after first turn)
-        let prompt_price = *self.cached_prompt_price.get_or_insert(15.0); // $15/1M tokens default
-        let completion_price = *self.cached_completion_price.get_or_insert(60.0); // $60/1M tokens default
+        // Resolve real per-model pricing (micros per Mtok) for the active route.
+        let model = self.provider.model();
+        let api_method = if provider_name.contains("openrouter") {
+            "openrouter"
+        } else if provider_name.contains("openai") {
+            "openai-api-key"
+        } else {
+            "api-key"
+        };
+        let estimate =
+            crate::provider::pricing::cheapness_for_route(&model, self.provider.name(), api_method);
+        let field = |v: Option<u64>, fallback: f64| -> f64 {
+            v.map(|m| m as f64).unwrap_or(fallback)
+        };
 
-        // Calculate cost for this turn
-        let prompt_cost = (self.streaming_input_tokens as f32 * prompt_price) / 1_000_000.0;
-        let completion_cost =
-            (self.streaming_output_tokens as f32 * completion_price) / 1_000_000.0;
-        let delta = prompt_cost + completion_cost;
+        // micros per Mtok; fall back to the legacy flat defaults when unknown.
+        let input_micros = field(
+            estimate.as_ref().and_then(|e| e.input_price_per_mtok_micros),
+            15_000_000.0,
+        );
+        let output_micros = field(
+            estimate
+                .as_ref()
+                .and_then(|e| e.output_price_per_mtok_micros),
+            60_000_000.0,
+        );
+        // Cache read/write default to full input price (providers without a cache
+        // discount/premium bill cache tokens as normal input).
+        let cache_read_micros = field(
+            estimate
+                .as_ref()
+                .and_then(|e| e.cache_read_price_per_mtok_micros),
+            input_micros,
+        );
+        let cache_write_micros = field(
+            estimate
+                .as_ref()
+                .and_then(|e| e.cache_write_price_per_mtok_micros),
+            input_micros,
+        );
+
+        // Surface the resolved $/Mtok in the debug panel.
+        self.cached_prompt_price = Some((input_micros / 1_000_000.0) as f32);
+        self.cached_completion_price = Some((output_micros / 1_000_000.0) as f32);
+
+        let cache_read_tokens = self.streaming_cache_read_tokens.unwrap_or(0);
+        let cache_write_tokens = self.streaming_cache_creation_tokens.unwrap_or(0);
+        // Anthropic reports input excluding cache; OpenAI/DeepSeek fold cached
+        // tokens into prompt_tokens. Normalize to full-price input for both.
+        let is_anthropic = provider_name.contains("anthropic") || provider_name.contains("claude");
+        let full_input_tokens = if is_anthropic {
+            self.streaming_input_tokens
+        } else {
+            self.streaming_input_tokens
+                .saturating_sub(cache_read_tokens)
+                .saturating_sub(cache_write_tokens)
+        };
+
+        // cost = tokens * (micros per Mtok) / 1e12 = dollars.
+        let cost_usd = ((full_input_tokens as f64) * input_micros
+            + (cache_read_tokens as f64) * cache_read_micros
+            + (cache_write_tokens as f64) * cache_write_micros
+            + (self.streaming_output_tokens as f64) * output_micros)
+            / 1_000_000_000_000.0;
+
+        let delta = cost_usd as f32;
         self.total_cost += delta;
         if delta > 0.0 {
             self.last_turn_cost_delta = delta;

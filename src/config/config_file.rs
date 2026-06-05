@@ -89,6 +89,20 @@ impl Config {
         Self::set_default_model(model, cfg.provider.default_provider.as_deref())
     }
 
+    /// Update just the persisted default subagent model. Reloads, patches, and
+    /// saves so it doesn't clobber other fields. `None` clears it.
+    pub fn set_subagent_model(model: Option<&str>) -> anyhow::Result<()> {
+        let mut cfg = Self::load();
+        cfg.provider.subagent_model = model.map(|s| s.to_string());
+        cfg.save()?;
+        reload_config();
+        crate::logging::info(&format!(
+            "Saved default subagent model: {}",
+            model.unwrap_or("(none)")
+        ));
+        Ok(())
+    }
+
     /// Update the persisted OpenAI reasoning effort preference.
     pub fn set_openai_reasoning_effort(value: Option<&str>) -> anyhow::Result<()> {
         let mut cfg = Self::load();

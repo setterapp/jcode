@@ -135,7 +135,11 @@ pub(crate) fn cheapness_for_route(
             } else {
                 model.to_string()
             };
+            // Live OpenRouter catalog first; fall back to hardcoded public
+            // pricing for direct OpenAI-compatible profiles (DeepSeek, Z.AI/GLM,
+            // Kimi) whose own endpoint returns no token prices.
             openrouter_route_pricing(&model_id, provider)
+                .or_else(|| core_pricing::direct_compatible_pricing(model))
         }
         _ => None,
     }

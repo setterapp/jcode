@@ -660,6 +660,10 @@ pub struct ProviderConfig {
     pub default_model: Option<String>,
     /// Default provider to use (claude|openai|copilot|openrouter)
     pub default_provider: Option<String>,
+    /// Default model for subagents (Task tool). Persists across sessions like
+    /// `default_model`; when absent, subagent model falls back to per-type tier
+    /// routing / the active model.
+    pub subagent_model: Option<String>,
     /// Reasoning effort for OpenAI Responses API (none|low|medium|high|xhigh)
     pub openai_reasoning_effort: Option<String>,
     /// OpenAI transport mode (auto|websocket|https)
@@ -692,6 +696,7 @@ impl Default for ProviderConfig {
         Self {
             default_model: None,
             default_provider: None,
+            subagent_model: None,
             openai_reasoning_effort: Some("low".to_string()),
             openai_transport: None,
             openai_service_tier: None,

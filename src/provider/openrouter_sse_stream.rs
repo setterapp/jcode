@@ -168,11 +168,26 @@ async fn stream_response(
     let sse_chunk_timeout_secs: u64 = std::env::var("JCODE_SSE_TIMEOUT_SECS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(300);
+        .unwrap_or(120);
     let sse_chunk_timeout = std::time::Duration::from_secs(sse_chunk_timeout_secs);
 
+    // Tighter window until the FIRST event arrives. A request that connects but
+    // never starts streaming (overloaded model, stuck upstream) now fails fast
+    // here instead of hanging for the full inter-chunk timeout.
+    let first_token_timeout_secs: u64 = std::env::var("JCODE_SSE_FIRST_TOKEN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(45);
+    let first_token_timeout = std::time::Duration::from_secs(first_token_timeout_secs);
+
+    let mut first_event_seen = false;
     loop {
-        let event = match tokio::time::timeout(sse_chunk_timeout, stream.next()).await {
+        let (timeout_dur, timeout_secs) = if first_event_seen {
+            (sse_chunk_timeout, sse_chunk_timeout_secs)
+        } else {
+            (first_token_timeout, first_token_timeout_secs)
+        };
+        let event = match tokio::time::timeout(timeout_dur, stream.next()).await {
             Ok(Some(Ok(event))) => event,
             Ok(Some(Err(e))) => anyhow::bail!(
                 "OpenAI-compatible stream error\n  endpoint: {}\n  model: {}\n  auth: {}\n  error: {}",
@@ -183,19 +198,26 @@ async fn stream_response(
             ),
             Ok(None) => break, // stream ended normally
             Err(_) => {
+                let phase = if first_event_seen {
+                    "between chunks"
+                } else {
+                    "before first token"
+                };
                 crate::logging::warn(&format!(
-                    "OpenRouter SSE stream timed out (no data for {}s)",
-                    sse_chunk_timeout_secs
+                    "OpenRouter SSE stream timed out ({}, no data for {}s)",
+                    phase, timeout_secs
                 ));
                 anyhow::bail!(
-                    "OpenAI-compatible stream timeout\n  endpoint: {}\n  model: {}\n  auth: {}\n  timeout: no data received for {} seconds\nHint: the provider may not support streaming, the model may be overloaded, or the request may be stuck before emitting tokens.",
+                    "OpenAI-compatible stream timeout\n  endpoint: {}\n  model: {}\n  auth: {}\n  timeout: no data received for {} seconds ({})\nHint: the provider may not support streaming, the model may be overloaded, or the request may be stuck before emitting tokens.",
                     url,
                     model,
                     auth.label(),
-                    sse_chunk_timeout_secs
+                    timeout_secs,
+                    phase
                 );
             }
         };
+        first_event_seen = true;
         if tx.send(Ok(event)).await.is_err() {
             return Ok(());
         }

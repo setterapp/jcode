@@ -27,6 +27,9 @@ impl SubagentTool {
         Session::load(parent_session_id)
             .ok()
             .and_then(|session| session.subagent_model)
+            // Fall back to the persisted cross-session default so a freshly
+            // started session still honors the user's chosen subagent model.
+            .or_else(|| crate::config::config().provider.subagent_model.clone())
     }
 
     fn resolve_model(
